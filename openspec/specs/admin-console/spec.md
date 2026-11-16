@@ -131,6 +131,127 @@ A interface SHALL permitir escolher relatório diário ou mensal e apresentar fa
 - **WHEN** não há atendimentos concluídos no período selecionado
 - **THEN** o relatório apresenta faturamento zero e não inclui atendimentos pendentes, confirmados ou cancelados
 
+### Requirement: Administrador consulta a equipe de barbeiros
+A seção administrativa SHALL listar os barbeiros mock com nome, especialidade e estado ativo/inativo, mantendo registros inativos disponíveis para consulta administrativa.
+
+#### Scenario: Equipe carregada
+- **WHEN** a consulta mock da equipe é concluída
+- **THEN** a interface exibe os dados disponíveis e o estado de cada barbeiro
+
+#### Scenario: Barbeiro inativo em novo agendamento
+- **WHEN** um barbeiro está inativo e um cliente consulta opções para agendar
+- **THEN** esse barbeiro não aparece entre as opções agendáveis
+
+### Requirement: Ações administrativas da equipe não persistem
+A seção SHALL permitir informar nome e especialidade para criar ou editar barbeiros e desativar registros, validando no mock sem alterar registros ou apresentar operações como persistidas.
+
+#### Scenario: Criação mock aceita
+- **WHEN** o administrador submete nome e especialidade válidos para criação
+- **THEN** a validação mock aceita a ação e informa que nada foi salvo
+
+#### Scenario: Dados obrigatórios ausentes
+- **WHEN** nome ou especialidade não são informados na criação mock
+- **THEN** a interface informa a validação sem apresentar uma alteração persistida
+
+#### Scenario: Edição ou desativação mock
+- **WHEN** o administrador aciona editar ou desativar para um barbeiro
+- **THEN** a operação permanece simulada e não remove o barbeiro nem seus agendamentos históricos
+
+### Requirement: Administrador consulta o catálogo de serviços
+A seção administrativa SHALL listar os serviços mock com título, descrição, preço, duração e estado ativo/inativo; somente serviços ativos são oferecidos para novos agendamentos.
+
+#### Scenario: Catálogo administrativo carregado
+- **WHEN** a consulta mock de serviços é concluída
+- **THEN** a interface exibe os campos disponíveis e o estado de cada serviço, incluindo registros inativos para consulta administrativa
+
+#### Scenario: Serviço inativo no agendamento
+- **WHEN** um serviço está inativo e um cliente consulta opções para um novo agendamento
+- **THEN** esse serviço não aparece entre as opções agendáveis
+
+### Requirement: Ações administrativas de serviço não persistem
+A seção SHALL permitir informar título, descrição, preço e duração para criar ou editar serviços e desativar registros, validando no mock e sem alterar registros ou afirmar persistência.
+
+#### Scenario: Criação mock válida
+- **WHEN** o administrador submete título, preço positivo e duração positiva
+- **THEN** a validação mock aceita a ação e informa que nada foi salvo
+
+#### Scenario: Criação mock inválida
+- **WHEN** o título obrigatório está ausente ou preço ou duração não são valores positivos válidos
+- **THEN** a interface informa a validação sem apresentar uma alteração persistida
+
+#### Scenario: Edição ou desativação mock
+- **WHEN** o administrador aciona editar ou desativar para um serviço
+- **THEN** a operação permanece simulada, sem remover registros de serviço ou histórico associado
+
+### Requirement: Administrador consulta a lista demonstrativa de clientes
+A seção de clientes SHALL exibir, para cada registro disponível, nome, telefone, quantidade de agendamentos e data do último atendimento, preservando o acesso administrativo aos dados mock.
+
+#### Scenario: Lista carregada
+- **WHEN** a consulta mock de clientes é concluída
+- **THEN** a interface apresenta os campos disponíveis para cada cliente sem expor dados além dos exibidos na tela
+
+#### Scenario: Lista vazia
+- **WHEN** a consulta mock não retorna clientes
+- **THEN** a interface apresenta um estado vazio, distinguindo-o do carregamento em andamento
+
+### Requirement: Administrador pesquisa a lista de clientes
+A lista SHALL filtrar clientes por nome, e-mail ou telefone sem modificar os registros e sem expor o e-mail como uma coluna adicional.
+
+#### Scenario: Busca com correspondências
+- **WHEN** o administrador informa um termo que corresponde a um ou mais clientes
+- **THEN** a lista apresenta somente os registros correspondentes
+
+#### Scenario: Busca sem correspondências
+- **WHEN** o administrador informa um termo sem correspondência
+- **THEN** a lista apresenta o estado vazio sem remover ou alterar os registros mock
+
+### Requirement: Ações de cadastro de clientes são apenas simuladas
+A seção SHALL permitir informar dados para criar ou editar clientes e oferecer desativação, encaminhando as ações à validação mock sem alterar registros ou apresentá-las como persistidas.
+
+#### Scenario: Ação mock concluída
+- **WHEN** o administrador submete dados válidos ou aciona desativação e a validação mock aceita a operação
+- **THEN** a interface informa que a ação foi simulada e nenhum registro é gravado ou alterado
+
+#### Scenario: Ação mock inválida ou recusada
+- **WHEN** nome ou telefone são inválidos, os dados não passam pela validação mock ou a operação retorna erro
+- **THEN** a interface informa a falha sem apresentar sucesso ou mudança persistida
+
+### Requirement: Administrador consulta agenda semanal filtrada
+A agenda SHALL exibir a semana da data selecionada, os atendimentos demonstrativos e filtros combináveis por barbeiro e estado, usando datas locais de `America/Sao_Paulo`.
+
+#### Scenario: Seleção de semana e filtros
+- **WHEN** o administrador seleciona uma data, barbeiro ou estado
+- **THEN** a interface exibe a semana correspondente e somente os atendimentos que correspondem aos filtros ativos
+
+#### Scenario: Semana sem resultados
+- **WHEN** não há atendimento mock correspondente à semana e aos filtros
+- **THEN** a interface apresenta o estado vazio e mantém visível o período consultado
+
+### Requirement: Administrador consulta agenda diária
+A agenda SHALL permitir alternar para um dia selecionado e apresentar somente os atendimentos desse dia, mantendo os filtros de barbeiro e estado.
+
+#### Scenario: Visualização diária selecionada
+- **WHEN** o administrador escolhe a visualização diária para uma data
+- **THEN** a interface apresenta apenas os atendimentos da data selecionada que correspondem aos filtros ativos
+
+### Requirement: Administrador solicita transições simuladas de atendimento
+A agenda SHALL permitir as transições administrativas mock válidas entre `pending`, `confirmed`, `cancelled` e `completed`, respeitando as regras de transição e o horário de término.
+
+#### Scenario: Transição aceita
+- **WHEN** o administrador solicita uma transição permitida e o repositório mock a aceita
+- **THEN** a agenda exibe o estado resultante na sessão e identifica a ação como simulada e não persistida
+
+#### Scenario: Transição recusada
+- **WHEN** a transição é inválida ou o repositório mock retorna erro
+- **THEN** a agenda preserva os registros exibidos e informa que a operação não foi concluída
+
+### Requirement: Agenda administrativa não persiste operações mock
+A agenda SHALL usar somente dados demonstrativos nesta etapa, sem chamadas HTTP ao Xano ou gravação durável de consulta ou transição.
+
+#### Scenario: Atualização da agenda mock
+- **WHEN** uma consulta ou transição é concluída
+- **THEN** nenhum dado é apresentado como persistido fora da sessão mock
+
 ### Requirement: Faturamento considera somente atendimentos concluídos
 O relatório SHALL somar o preço snapshot de cada atendimento concluído cuja data local de início pertença ao período selecionado.
 

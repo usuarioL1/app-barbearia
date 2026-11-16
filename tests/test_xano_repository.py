@@ -121,7 +121,13 @@ class XanoRepositoryTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(result.data["name"], "Cliente Atualizado")
+        self.assertEqual(
+            request.await_args_list[0].args[:2],
+            ("GET", "auth/me"),
+        )
+        self.assertEqual(request.await_args_list[0].kwargs["token"], "session-token")
         self.assertEqual(request.await_args_list[1].args[:2], ("PATCH", "auth/me"))
+        self.assertEqual(request.await_args_list[1].kwargs["token"], "session-token")
         self.assertEqual(
             request.await_args_list[1].kwargs["payload"],
             {
@@ -129,6 +135,25 @@ class XanoRepositoryTests(unittest.IsolatedAsyncioTestCase):
                 "email": "cliente@example.test",
                 "phone": "11888888888",
             },
+        )
+
+    async def test_password_reset_request_uses_public_endpoint(self) -> None:
+        request = AsyncMock(
+            return_value={
+                "message": "Se o e-mail estiver cadastrado, enviaremos um link."
+            }
+        )
+        with patch("app_barbearia.xano_repository.request_json", new=request):
+            result = await XanoRepository("existing-session").password_reset(
+                " CLIENTE@example.test "
+            )
+
+        self.assertTrue(result.persisted)
+        self.assertEqual(request.await_args.args[:2], ("POST", "auth/password-reset"))
+        self.assertEqual(request.await_args.kwargs["token"], "")
+        self.assertEqual(
+            request.await_args.kwargs["payload"],
+            {"email": "cliente@example.test"},
         )
 
     async def test_password_reset_uses_one_time_token_without_auth_header(self) -> None:
@@ -151,6 +176,48 @@ class XanoRepositoryTests(unittest.IsolatedAsyncioTestCase):
                 "password": "new-strong-password",
             },
         )
+
+    async def test_catalog_uses_published_xano_items_and_record_fields(self) -> None:
+        request = AsyncMock(
+            side_effect=[
+                {
+                    "items": [
+                        {
+                            "id": 8,
+                            "title": "Corte",
+                            "description": "Corte tradicional",
+                            "price": "40.00",
+                            "duration_minutes": 30,
+                            "active": True,
+                        }
+                    ]
+                },
+                {
+                    "items": [
+                        {
+                            "id": 3,
+                            "user_id": 12,
+                            "name": "Barbeiro",
+                            "specialty": "Corte clássico",
+                            "active": True,
+                        }
+                    ]
+                },
+            ]
+        )
+        with patch("app_barbearia.xano_repository.request_json", new=request):
+            services = await XanoRepository().services()
+            barbers = await XanoRepository().barbers()
+
+        self.assertEqual(services[0]["id"], "8")
+        self.assertEqual(services[0]["title"], "Corte")
+        self.assertEqual(services[0]["price_cents"], 4000)
+        self.assertEqual(services[0]["duration_minutes"], 30)
+        self.assertEqual(barbers[0]["id"], "3")
+        self.assertEqual(barbers[0]["name"], "Barbeiro")
+        self.assertEqual(barbers[0]["specialty"], "Corte clássico")
+        self.assertEqual(request.await_args_list[0].args[:2], ("GET", "services"))
+        self.assertEqual(request.await_args_list[1].args[:2], ("GET", "barbers"))
 
     def test_appointment_timestamps_are_presented_in_sao_paulo_time(self) -> None:
         appointment = _appointment(

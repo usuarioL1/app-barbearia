@@ -56,6 +56,31 @@ class ApiClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(observed["authorization"], "Bearer access-token")
         self.assertEqual(observed["query"], "date=2026-11-11")
 
+    async def test_public_request_omits_authentication_and_preserves_api_group(self) -> None:
+        observed: dict[str, str | None] = {}
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            observed["authorization"] = request.headers.get("Authorization")
+            observed["url"] = str(request.url)
+            return httpx.Response(200, json={"items": []})
+
+        with patch.dict(
+            "os.environ",
+            {"XANO_API_BASE_URL": "https://xano.example.test/api:auth"},
+        ):
+            await request_json(
+                "GET",
+                "services",
+                token="",
+                transport=httpx.MockTransport(respond),
+            )
+
+        self.assertIsNone(observed["authorization"])
+        self.assertEqual(
+            observed["url"],
+            "https://xano.example.test/api:auth/services",
+        )
+
     async def test_error_envelope_preserves_code_and_safe_message(self) -> None:
         def respond(request: httpx.Request) -> httpx.Response:
             return httpx.Response(

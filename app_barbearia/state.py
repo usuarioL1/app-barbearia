@@ -113,6 +113,27 @@ def _repository_for(state: object) -> Any:
     return repository_for(getattr(state, "_auth_token", ""))
 
 
+def _clear_authenticated_session(state: Any) -> None:
+    state._auth_token = ""
+    state.is_authenticated = False
+    state.current_user_id = ""
+    state.user_name = ""
+    state.greeting_name = ""
+    state.user_email = ""
+    state.user_phone = ""
+    state.user_role = ""
+    state.profile_name = ""
+    state.profile_email = ""
+    state.profile_phone = ""
+    state.customer_appointments = []
+    state.upcoming_appointments = []
+    state.next_appointments = []
+    state.historical_appointments = []
+    state._login_password = ""
+    state._signup_password = ""
+    state._signup_password_confirmation = ""
+
+
 async def _ensure_authenticated(
     state: Any,
     allowed_roles: set[str],
@@ -154,21 +175,7 @@ async def _ensure_authenticated(
     state.error_message = str(failure)
     state.success_message = ""
     if failure.status_code == 401:
-        state._auth_token = ""
-        state.is_authenticated = False
-        state.current_user_id = ""
-        state.user_name = ""
-        state.greeting_name = ""
-        state.user_email = ""
-        state.user_phone = ""
-        state.user_role = ""
-        state.profile_name = ""
-        state.profile_email = ""
-        state.profile_phone = ""
-        state.customer_appointments = []
-        state.upcoming_appointments = []
-        state.next_appointments = []
-        state.historical_appointments = []
+        _clear_authenticated_session(state)
     return False, redirect
 
 
@@ -395,6 +402,8 @@ class AppState(rx.State):
         self.is_loading = False
 
     def _set_failure(self, error: MockFailure) -> None:
+        if error.status_code == 401:
+            _clear_authenticated_session(self)
         self.error_message = str(error)
 
     @rx.event
@@ -825,6 +834,8 @@ class AppState(rx.State):
             services = await _repository_for(self).services()
             barbers = await _repository_for(self).barbers()
         except MockFailure as error:
+            self.services = []
+            self.barbers = []
             self._set_failure(error)
         else:
             self.services = services
@@ -1504,6 +1515,7 @@ class AppState(rx.State):
         try:
             result = await _repository_for(self).authenticate(email, password)
         except MockFailure as error:
+            _clear_authenticated_session(self)
             self._set_failure(error)
         else:
             self._present_user(result.data)
@@ -1558,6 +1570,7 @@ class AppState(rx.State):
                 password=password,
             )
         except MockFailure as error:
+            _clear_authenticated_session(self)
             self._set_failure(error)
         else:
             self._present_user(result.data)

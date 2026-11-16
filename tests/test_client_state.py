@@ -200,16 +200,22 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_catalog_failure_is_reported_without_success(self) -> None:
         state = ClientStateHarness()
+        state.services = [{"id": "demo-service"}]
+        state.barbers = [{"id": "demo-barber"}]
         failure = MockFailure("Catálogo indisponível.")
-        with patch.object(
-            MockRepository,
-            "services",
-            new=AsyncMock(side_effect=failure),
+        repository = type("Repository", (), {})()
+        repository.services = AsyncMock(side_effect=failure)
+        repository.barbers = AsyncMock()
+        with (
+            patch.dict("os.environ", {"XANO_API_BASE_URL": "https://xano.example.test"}),
+            patch("app_barbearia.state._repository_for", return_value=repository),
         ):
             await AppState.load_catalog.fn(state)
 
         self.assertEqual(state.error_message, "Catálogo indisponível.")
         self.assertEqual(state.success_message, "")
+        self.assertEqual(state.services, [])
+        self.assertEqual(state.barbers, [])
         self.assertFalse(state.is_loading)
 
     async def test_booking_availability_failure_discards_stale_slots(self) -> None:
@@ -287,6 +293,76 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("e-mail válido", state.error_message)
         self.assertFalse(state.is_authenticated)
         self.assertFalse(state.is_loading)
+
+    async def test_rejected_authentication_clears_an_existing_session(self) -> None:
+        state = ClientStateHarness()
+        state.login_email = "cliente@example.test"
+        state._login_password = "wrong-password"
+        state._auth_token = "old-session"
+        state.current_user_id = "42"
+        state.is_authenticated = True
+        failure = MockFailure(
+            "E-mail ou senha inválidos.",
+            code="unauthorized",
+            status_code=401,
+        )
+        repository = type("Repository", (), {})()
+        repository.authenticate = AsyncMock(side_effect=failure)
+        repository.signup = AsyncMock(side_effect=failure)
+
+        with patch("app_barbearia.state._repository_for", return_value=repository):
+            await AppState.login.fn(state)
+
+        self.assertEqual(state._auth_token, "")
+        self.assertFalse(state.is_authenticated)
+        self.assertEqual(state.current_user_id, "")
+        self.assertEqual(state._login_password, "")
+        self.assertEqual(state.error_message, "E-mail ou senha inválidos.")
+
+        state.signup_name = "Cliente"
+        state.signup_email = "cliente@example.test"
+        state.signup_phone = "11999999999"
+        state._signup_password = "wrong-password"
+        state._signup_password_confirmation = "wrong-password"
+        state._auth_token = "old-session"
+        state.current_user_id = "42"
+        state.is_authenticated = True
+
+        with patch("app_barbearia.state._repository_for", return_value=repository):
+            await AppState.signup.fn(state)
+
+        self.assertEqual(state._auth_token, "")
+        self.assertFalse(state.is_authenticated)
+        self.assertEqual(state.current_user_id, "")
+        self.assertEqual(state._signup_password, "")
+
+    async def test_expired_session_is_cleared_when_profile_check_returns_401(self) -> None:
+        state = ClientStateHarness()
+        state._auth_token = "expired-session"
+        state.current_user_id = "42"
+        state.user_name = "Cliente"
+        state.is_authenticated = True
+        failure = MockFailure(
+            "Sessão inválida ou expirada.",
+            code="unauthorized",
+            status_code=401,
+        )
+
+        with (
+            patch.dict("os.environ", {"XANO_API_BASE_URL": "https://xano.example.test"}),
+            patch(
+                "app_barbearia.state.XanoRepository.current_user",
+                new=AsyncMock(side_effect=failure),
+            ),
+        ):
+            redirect = await AppState.load_profile.fn(state)
+
+        self.assertIsNotNone(redirect)
+        self.assertEqual(state._auth_token, "")
+        self.assertFalse(state.is_authenticated)
+        self.assertEqual(state.current_user_id, "")
+        self.assertEqual(state.user_name, "")
+        self.assertEqual(state.error_message, "Sessão inválida ou expirada.")
 
     async def test_cancel_failure_preserves_displayed_appointments(self) -> None:
         state = ClientStateHarness()
