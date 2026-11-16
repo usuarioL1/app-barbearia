@@ -1,49 +1,41 @@
-// This function generates a magic token with a 60 minute expiration date.
 function "Quick Start/generate_magic_link" {
   input {
-    email email?
+    email email filters=trim|lower
   }
 
   stack {
-    // Checks that the email input is not empty
-    precondition ($input.email != null) {
-      error = "email is required but was not suppiled. "
-    }
-  
-    // Gets the user record by email
-    db.query "" {
-      where = $db.user.email == $input.email
-      return = {type: "single"}
+    db.get "user" {
+      field_name = "email"
+      field_value = $input.email
+      output = ["id", "email", "active"]
     } as $user
-  
-    // Verifies that the user record exists
-    precondition ($user != null) {
-      error_type = "notfound"
-      error = "No user found for that email."
+
+    var $reset_link {
+      value = {token: "", email: $input.email}
     }
-  
-    // Creates a unique UUID as token
-    security.create_uuid as $token
-  
-    // Builds the password reset object
-    var $password_reset {
-      value = {}
-        |set:"token":$token
-        |set:"expiration":(now
-          |add_secs_to_timestamp:(3600|to_int)
-        )
-        |set:"used":false
+
+    conditional {
+      if ($user != null && $user.active == true) {
+        security.create_uuid as $token
+
+        db.add_or_edit "password_reset" {
+          field_name = "user_id"
+          field_value = $user.id
+          data = {
+            user_id   : $user.id
+            token_hash: $token
+            expires_at: now|add_secs_to_timestamp:3600
+            used      : false
+          }
+        } as $reset_record
+
+        var.update $reset_link {
+          value = $reset_link|set:"token":$token
+        }
+      }
     }
-  
-    // Updates the user record with the password reset object
-    db.edit "" {
-      field_name = "id"
-      field_value = $user|get:"id":0
-      data = {password_reset: $password_reset}
-    } as $updated_password_reset
   }
 
-  response = {token: $token, email: $updated_password_reset.email}
-  tags = ["xano:quick-start"]
-  guid = "usr8Ojrfn49CktGOBiqKk2gOIno"
+  response = $reset_link
+  tags = ["barberflow:auth"]
 }

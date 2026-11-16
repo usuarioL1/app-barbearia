@@ -10,6 +10,7 @@ query "logs/user/my_events" verb=GET {
     // Retrieve event logs for the authenticated user
     db.query "" {
       where = $db.event_log.user_id == $auth.id
+      output = ["id", "created_at", "user_id", "action"]
       return = {type: "list"}
     } as $user_events
   }

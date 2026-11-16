@@ -1,0 +1,14 @@
+project:
+  name: app_barbearia
+  domain: Gestão e Agendamento para Barbearia
+  timezone: America/Sao_Paulo
+
+stack:
+  frontend: Reflex (Python)
+  backend: Xano (NoCode/LowCode API)
+
+core_entities:
+  - user: perfis (admin, barber, client)
+  - service: catálogo de serviços com soft-delete
+  - barber: ligação ao user e horário de expediente
+  - appointment: marcações com snapshots de preço/duração         

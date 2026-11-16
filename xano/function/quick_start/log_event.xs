@@ -18,7 +18,7 @@ function "Quick Start/log_event" {
         created_at: "now"
         user_id   : $input.user_id
         action    : $input.action
-        metadata  : $input.metadata
+        metadata  : {}
       }
     } as $new_log_entry
   }

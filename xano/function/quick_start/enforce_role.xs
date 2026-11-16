@@ -11,7 +11,7 @@ function "Quick Start/enforce_role" {
   stack {
     // Defines a hierarchy of roles with numerical levels.
     var $role_hierarchy {
-      value = {admin: 2, member: 1}
+      value = {client: 1, barber: 2, admin: 3}
     }
   
     // Retrieve the user's role from the database.

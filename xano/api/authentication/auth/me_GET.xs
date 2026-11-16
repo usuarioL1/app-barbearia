@@ -11,20 +11,29 @@ query "auth/me" verb=GET {
     db.get "" {
       field_name = "id"
       field_value = $auth.id
-      output = ["id", "created_at", "name", "email", "role"]
+      output = ["id", "name", "email", "phone", "role", "active"]
     } as $user
-  
-    // Create an event log for get user record
+
+    precondition ($user != null && $user.active == true) {
+      error_type = "unauthorized"
+      error = "Sessão inválida ou expirada."
+    }
+
     function.run "Quick Start/log_event" {
       input = {
         user_id : $user.id
         action  : "get_auth_user"
-        metadata: $user
       }
     } as $event_log
   }
 
-  response = $user
+  response = {
+    id   : $user.id
+    name : $user.name
+    email: $user.email
+    phone: $user.phone
+    role : $user.role
+  }
   tags = ["xano:quick-start"]
   guid = "gZw_eUnPtJJCXRh8vh7oixOejtw"
 }
