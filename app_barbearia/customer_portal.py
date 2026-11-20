@@ -30,6 +30,20 @@ CATALOG_LINKS = PORTAL_LINKS
 APPOINTMENT_LINKS = PORTAL_LINKS
 BOOKING_LINKS = PORTAL_LINKS
 
+_SERVICE_IMAGE_ALIASES = (
+    ("Corte Masculino", "service_haircut.jpg"),
+    ("Barba", "service_beard.jpg"),
+    ("Combo", "service_combo.jpg"),
+    ("corte + Barba", "service_combo.jpg"),
+    ("Corte + Barba", "service_combo.jpg"),
+    ("Sobrancelha", "service_eyebrow.jpg"),
+    ("Pezinho / Acabamento", "service_edgeup.jpg"),
+    ("Hidratação Capilar", "service_hydration.jpg"),
+)
+_SERVICE_IMAGE_BY_TITLE = {
+    title.strip().casefold(): image for title, image in _SERVICE_IMAGE_ALIASES
+}
+
 
 def _page_header(eyebrow: str, title: str, description: str) -> rx.Component:
     return rx.vstack(
@@ -73,22 +87,26 @@ def _card(title: str, content: rx.Component) -> rx.Component:
     )
 
 
-def _service_photo(service: ServiceRecord) -> rx.Component:
-    source = rx.cond(
-        service["icon_tag"] == "eye",
-        rx.asset("service_eyebrow.jpg"),
-        rx.cond(
-            service["title"] == "Barba",
-            rx.asset("service_beard.jpg"),
-            rx.cond(
-                service["title"] == "Combo",
-                rx.asset("service_combo.jpg"),
-                rx.asset("service_haircut.jpg"),
-            ),
-        ),
+def _service_image_name(title: str) -> str:
+    return _SERVICE_IMAGE_BY_TITLE.get(
+        title.strip().casefold(),
+        "service_haircut.jpg",
     )
+
+
+def _service_image_source(title: str | rx.Var[str]) -> rx.Var[str]:
+    if isinstance(title, str):
+        return rx.asset(_service_image_name(title))
+
+    source = rx.asset("service_haircut.jpg")
+    for alias, image in reversed(_SERVICE_IMAGE_ALIASES):
+        source = rx.cond(title == alias, rx.asset(image), source)
+    return source
+
+
+def _service_photo(service: ServiceRecord) -> rx.Component:
     return rx.image(
-        src=source,
+        src=_service_image_source(service["title"]),
         alt="Imagem ilustrativa do serviço",
         object_fit="cover",
         object_position="center",
@@ -433,17 +451,8 @@ def _appointment_item(item: AppointmentRecord) -> rx.Component:
 
 
 def _appointment_photo(service_title: str | rx.Var[str]) -> rx.Component:
-    source = rx.cond(
-        service_title == "Barba",
-        rx.asset("service_beard.jpg"),
-        rx.cond(
-            service_title == "Combo",
-            rx.asset("service_combo.jpg"),
-            rx.asset("service_haircut.jpg"),
-        ),
-    )
     return rx.image(
-        src=source,
+        src=_service_image_source(service_title),
         alt="Imagem ilustrativa do serviço",
         object_fit="cover",
         object_position="center",
@@ -516,7 +525,18 @@ def _featured_appointment(item: AppointmentRecord) -> rx.Component:
             min_width="0",
         ),
         rx.vstack(
-            _coming_soon_button("Remarcar"),
+            rx.button(
+                "Remarcar",
+                type="button",
+                on_click=AppState.begin_reschedule(item["id"]),
+                color="#090909",
+                background_color=ACCENT,
+                border_radius="8px",
+                padding="9px 12px",
+                font_size="0.74rem",
+                font_weight="700",
+                width="100%",
+            ),
             rx.cond(
                 (item["status"] == "confirmed") | (item["status"] == "pending"),
                 rx.button(
@@ -538,7 +558,19 @@ def _featured_appointment(item: AppointmentRecord) -> rx.Component:
                 ),
                 rx.fragment(),
             ),
-            _coming_soon_button("Ver Detalhes"),
+            rx.button(
+                "Ver Detalhes",
+                type="button",
+                on_click=AppState.open_appointment_details(item["id"]),
+                color=ACCENT,
+                background_color="transparent",
+                border=f"1px solid {ACCENT}",
+                border_radius="8px",
+                padding="9px 12px",
+                font_size="0.74rem",
+                font_weight="700",
+                width="100%",
+            ),
             align="stretch",
             justify="center",
             width="100%",
@@ -1298,6 +1330,22 @@ def appointments_page() -> rx.Component:
             ),
         ),
         _card(
+            "Todos os Próximos Agendamentos",
+            rx.cond(
+                AppState.upcoming_appointments.length() == 0,
+                rx.cond(
+                    AppState.is_loading,
+                    rx.text("Carregando agendamentos...", color=MUTED, role="status"),
+                    rx.text("Nenhum próximo agendamento.", color=MUTED),
+                ),
+                rx.vstack(
+                    rx.foreach(AppState.filtered_upcoming_appointments, _appointment_item),
+                    align="stretch",
+                    spacing="0",
+                ),
+            ),
+        ),
+        _card(
             "Agendamentos Anteriores",
             rx.cond(
                 AppState.historical_appointments.length() == 0,
@@ -1307,7 +1355,7 @@ def appointments_page() -> rx.Component:
                     rx.text("Nenhum atendimento anterior.", color=MUTED),
                 ),
                 rx.vstack(
-                    rx.foreach(AppState.historical_appointments, _mini_history_item),
+                    rx.foreach(AppState.filtered_historical_appointments, _mini_history_item),
                     align="stretch",
                     spacing="0",
                 ),
@@ -1328,7 +1376,7 @@ def appointments_page() -> rx.Component:
             ),
             rx.vstack(
                 rx.foreach(
-                    AppState.historical_appointments,
+                    AppState.filtered_historical_appointments,
                     _history_appointment_card,
                 ),
                 align="stretch",
@@ -1344,6 +1392,82 @@ def appointments_page() -> rx.Component:
                 "Área do cliente",
                 "Meus Agendamentos",
                 "Confira seus próximos horários e atendimentos anteriores.",
+            ),
+            rx.cond(
+                AppState.selected_appointment != None,
+                _card(
+                    "Detalhes do Agendamento",
+                    rx.vstack(
+                        rx.text(
+                            AppState.selected_appointment["service_title"],
+                            color=FOREGROUND,
+                            font_weight="700",
+                        ),
+                        rx.text(
+                            "Barbeiro: " + AppState.selected_appointment["barber_name"],
+                            color=MUTED,
+                        ),
+                        rx.text(
+                            AppState.selected_appointment["date_display"]
+                            + " às "
+                            + AppState.selected_appointment["time"],
+                            color=FOREGROUND,
+                        ),
+                        rx.text(
+                            AppState.selected_appointment["price_display"],
+                            color=ACCENT,
+                            font_weight="700",
+                        ),
+                        rx.cond(
+                            AppState.reschedule_appointment_id != "",
+                            rx.vstack(
+                                rx.el.input(
+                                    type="date",
+                                    value=AppState.reschedule_date,
+                                    on_change=AppState.set_reschedule_date,
+                                    on_blur=AppState.load_reschedule_times,
+                                    aria_label="Nova data",
+                                    background_color=SURFACE_RAISED,
+                                    color=FOREGROUND,
+                                    border=f"1px solid {SURFACE_BORDER}",
+                                    border_radius="7px",
+                                    padding="8px 10px",
+                                ),
+                                rx.select(
+                                    AppState.reschedule_available_times,
+                                    value=AppState.reschedule_time,
+                                    on_change=AppState.select_reschedule_time,
+                                    placeholder="Selecione o novo horário",
+                                ),
+                                rx.button(
+                                    "Confirmar Remarcação",
+                                    type="button",
+                                    on_click=AppState.confirm_reschedule,
+                                    color="#090909",
+                                    background_color=ACCENT,
+                                    border_radius="8px",
+                                    padding="10px 12px",
+                                ),
+                                align="stretch",
+                                spacing="2",
+                            ),
+                            rx.fragment(),
+                        ),
+                        rx.button(
+                            "Fechar",
+                            type="button",
+                            on_click=AppState.close_appointment_details,
+                            color=ACCENT,
+                            background_color="transparent",
+                            border=f"1px solid {ACCENT}",
+                            border_radius="8px",
+                            padding="8px 10px",
+                        ),
+                        align="stretch",
+                        spacing="2",
+                    ),
+                ),
+                rx.fragment(),
             ),
             rx.flex(
                 rx.flex(
@@ -1399,7 +1523,25 @@ def appointments_page() -> rx.Component:
                     flex_wrap="wrap",
                     gap="8px",
                 ),
-                _coming_soon_button("Período"),
+                rx.select(
+                    ["Todos", "7 dias", "30 dias", "90 dias"],
+                    value=rx.cond(
+                        AppState.appointment_filter == "history",
+                        rx.cond(
+                            AppState.history_period_filter == "all",
+                            "Todos",
+                            AppState.history_period_filter + " dias",
+                        ),
+                        rx.cond(
+                            AppState.upcoming_period_filter == "all",
+                            "Todos",
+                            AppState.upcoming_period_filter + " dias",
+                        ),
+                    ),
+                    on_change=AppState.set_period_filter,
+                    size="2",
+                    aria_label="Filtrar agendamentos por período",
+                ),
                 align="center",
                 justify="between",
                 flex_wrap="wrap",
@@ -1606,7 +1748,7 @@ def history_page() -> rx.Component:
                 ),
                 rx.vstack(
                     rx.foreach(
-                        AppState.historical_appointments,
+                        AppState.filtered_historical_appointments,
                         _history_appointment_card,
                     ),
                     align="stretch",
@@ -2224,7 +2366,20 @@ def profile_page() -> rx.Component:
                         color=FOREGROUND,
                     ),
                     rx.text(AppState.user_email, color=MUTED, font_size="0.8rem"),
-                    _coming_soon_button("Alterar Foto"),
+                    rx.el.input(
+                        type="url",
+                        placeholder="URL HTTPS da foto",
+                        value=AppState.profile_avatar_url,
+                        on_change=AppState.set_profile_avatar_url,
+                        aria_label="URL HTTPS da foto",
+                        background_color=SURFACE_RAISED,
+                        color=FOREGROUND,
+                        border=f"1px solid {SURFACE_BORDER}",
+                        border_radius="7px",
+                        padding="8px 10px",
+                        width="220px",
+                        max_width="100%",
+                    ),
                     align="start",
                     spacing="2",
                     min_width="0",
@@ -2395,7 +2550,18 @@ def profile_page() -> rx.Component:
                     font_size="0.8rem",
                     flex="1",
                 ),
-                _coming_soon_button("Alterar Senha"),
+                rx.button(
+                    "Alterar Senha",
+                    type="button",
+                    on_click=AppState.change_account_password,
+                    color=ACCENT,
+                    background_color="transparent",
+                    border=f"1px solid {ACCENT}",
+                    border_radius="8px",
+                    padding="8px 10px",
+                    font_size="0.72rem",
+                    font_weight="700",
+                ),
                 align="center",
                 gap="10px",
                 width="100%",
@@ -2410,15 +2576,15 @@ def profile_page() -> rx.Component:
                     font_size="0.8rem",
                     flex="1",
                 ),
-                rx.switch(
-                    checked=False,
-                    disabled=True,
-                    aria_label="Autenticação em Duas Etapas, Em breve",
-                ),
-                rx.text(
-                    "Em breve",
-                    color=MUTED,
-                    font_size="0.66rem",
+                rx.button(
+                    "Configurar",
+                    type="button",
+                    on_click=AppState.start_totp_setup,
+                    color="#090909",
+                    background_color=ACCENT,
+                    border_radius="8px",
+                    padding="8px 10px",
+                    font_size="0.72rem",
                     font_weight="700",
                 ),
                 align="center",
@@ -2428,7 +2594,18 @@ def profile_page() -> rx.Component:
                 padding="10px 0",
                 border_bottom=f"1px solid {SURFACE_BORDER}",
             ),
-            _coming_soon_button("Sair de Todos os Dispositivos"),
+            rx.button(
+                "Sair de Todos os Dispositivos",
+                type="button",
+                on_click=AppState.revoke_all_sessions,
+                color="#090909",
+                background_color=ACCENT,
+                border_radius="8px",
+                padding="10px 12px",
+                font_size="0.76rem",
+                font_weight="700",
+                width="100%",
+            ),
             align="stretch",
             spacing="3",
         ),

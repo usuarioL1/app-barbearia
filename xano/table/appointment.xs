@@ -33,4 +33,5 @@ table "appointment" {
     {type: "btree", field: [{name: "barber_id"}, {name: "start_time"}]}
     {type: "btree", field: [{name: "status"}, {name: "start_time"}]}
   ]
+  guid = "VvPUMPegSEjpt6yi0Vb_F0nsIts"
 }

@@ -101,6 +101,45 @@ class ClientStateHarness:
 
 
 class ClientStateTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        environment = patch.dict(
+            "os.environ",
+            {"BARBERFLOW_MODE": "demo"},
+            clear=True,
+        )
+        environment.start()
+        self.addCleanup(environment.stop)
+
+    async def test_customer_appointments_are_sorted_and_split_by_active_status(self) -> None:
+        state = ClientStateHarness()
+        appointments = [
+            {"id": "later", "date": "2026-08-25", "time": "11:00", "status": "confirmed"},
+            {"id": "earlier", "date": "2026-08-25", "time": "09:00", "status": "pending"},
+            {"id": "cancelled", "date": "2026-08-25", "time": "10:00", "status": "cancelled"},
+            {"id": "past", "date": "2026-08-23", "time": "10:00", "status": "pending"},
+        ]
+
+        AppState._split_customer_appointments(state, appointments)
+
+        self.assertEqual(
+            [item["id"] for item in state.upcoming_appointments],
+            ["earlier", "later"],
+        )
+        self.assertEqual([item["id"] for item in state.next_appointments], ["earlier"])
+        self.assertEqual(
+            [item["id"] for item in state.historical_appointments],
+            ["past", "cancelled"],
+        )
+
+    async def test_customer_appointments_empty_state_clears_all_lists(self) -> None:
+        state = ClientStateHarness()
+
+        AppState._split_customer_appointments(state, [])
+
+        self.assertEqual(state.upcoming_appointments, [])
+        self.assertEqual(state.next_appointments, [])
+        self.assertEqual(state.historical_appointments, [])
+
     async def test_real_backend_requires_a_session_without_using_mock_data(self) -> None:
         state = ClientStateHarness()
 

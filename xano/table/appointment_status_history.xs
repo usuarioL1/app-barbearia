@@ -21,4 +21,5 @@ table "appointment_status_history" {
     {type: "primary", field: [{name: "id"}]}
     {type: "btree", field: [{name: "appointment_id"}, {name: "changed_at"}]}
   ]
+  guid = "HqQFCusNXLluGzE3fxRrIXJKWfo"
 }

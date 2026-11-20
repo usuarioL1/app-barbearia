@@ -4,7 +4,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Generic, Literal, TypedDict, TypeVar
+from typing import Generic, Literal, NotRequired, TypedDict, TypeVar
 from zoneinfo import ZoneInfo
 
 
@@ -19,6 +19,7 @@ class UserRecord(TypedDict):
     email: str
     phone: str
     role: str
+    avatar_url: NotRequired[str]
 
 
 class ServiceRecord(TypedDict):
@@ -181,11 +182,11 @@ _SERVICES: tuple[ServiceRecord, ...] = (
         "id": "sobrancelha",
         "title": "Sobrancelha",
         "description": "Design de sobrancelhas",
-        "price_cents": 2500,
-        "price_display": "R$ 25,00",
-        "duration_minutes": 20,
-        "duration_display": "20 min",
-        "booking_description": "20 min · R$ 25,00",
+        "price_cents": 2000,
+        "price_display": "R$ 20,00",
+        "duration_minutes": 15,
+        "duration_display": "15 min",
+        "booking_description": "15 min · R$ 20,00",
         "icon_tag": "eye",
         "active": True,
     },
@@ -199,6 +200,30 @@ _SERVICES: tuple[ServiceRecord, ...] = (
         "duration_display": "60 min",
         "booking_description": "60 min · R$ 70,00",
         "icon_tag": "scissors",
+        "active": True,
+    },
+    {
+        "id": "pezinho-acabamento",
+        "title": "Pezinho / Acabamento",
+        "description": "Acabamento de contorno e costeletas",
+        "price_cents": 1500,
+        "price_display": "R$ 15,00",
+        "duration_minutes": 15,
+        "duration_display": "15 min",
+        "booking_description": "15 min · R$ 15,00",
+        "icon_tag": "scissors",
+        "active": True,
+    },
+    {
+        "id": "hidratacao-capilar",
+        "title": "Hidratação Capilar",
+        "description": "Tratamento hidratante para os fios",
+        "price_cents": 4000,
+        "price_display": "R$ 40,00",
+        "duration_minutes": 30,
+        "duration_display": "30 min",
+        "booking_description": "30 min · R$ 40,00",
+        "icon_tag": "sparkles",
         "active": True,
     },
 )
@@ -628,6 +653,7 @@ class MockRepository:
         name: str,
         email: str,
         phone: str,
+        avatar_url: str = "",
     ) -> MockResult[UserRecord]:
         current = await cls.user(user_id)
         if any(
@@ -640,8 +666,53 @@ class MockRepository:
             "name": name.strip(),
             "email": email.strip().casefold(),
             "phone": phone.strip(),
+            "avatar_url": avatar_url,
         }
         return MockResult(updated)
+
+    @classmethod
+    async def change_password(
+        cls,
+        *,
+        current_password: str,
+        new_password: str,
+        totp_code: str = "",
+    ) -> MockResult[dict[str, bool]]:
+        del current_password, new_password, totp_code
+        raise MockFailure(
+            "A alteração autenticada de senha não está disponível no modo de demonstração.",
+            code="unsupported_operation",
+        )
+
+    @classmethod
+    async def totp_setup(cls) -> MockResult[dict[str, str]]:
+        raise MockFailure(
+            "O TOTP não está disponível no modo de demonstração.",
+            code="unsupported_operation",
+        )
+
+    @classmethod
+    async def totp_enable(cls, *, code: str) -> MockResult[dict[str, bool]]:
+        del code
+        raise MockFailure(
+            "O TOTP não está disponível no modo de demonstração.",
+            code="unsupported_operation",
+        )
+
+    @classmethod
+    async def totp_disable(cls, *, current_password: str, code: str) -> MockResult[dict[str, bool]]:
+        del current_password, code
+        raise MockFailure(
+            "O TOTP não está disponível no modo de demonstração.",
+            code="unsupported_operation",
+        )
+
+    @classmethod
+    async def revoke_all_sessions(cls) -> MockResult[dict[str, bool]]:
+        raise MockFailure(
+            "A revogação de sessões não está disponível no modo de demonstração.",
+            code="unsupported_operation",
+        )
 
     @classmethod
     async def availability(
@@ -764,6 +835,77 @@ class MockRepository:
                 status_code=400,
             )
         return MockResult(_present_appointment({**appointment, "status": "cancelled"}))
+
+    @classmethod
+    async def appointment(cls, appointment_id: str) -> AppointmentRecord:
+        appointment = next(
+            (item for item in _APPOINTMENTS if item["id"] == appointment_id),
+            None,
+        )
+        if appointment is None:
+            raise MockFailure("Agendamento não encontrado.", code="not_found", status_code=404)
+        return _present_appointment(appointment)
+
+    @classmethod
+    async def reschedule_appointment(
+        cls,
+        appointment_id: str,
+        *,
+        client_id: str,
+        start_time: str,
+    ) -> MockResult[AppointmentRecord]:
+        appointment = next(
+            (item for item in _APPOINTMENTS if item["id"] == appointment_id),
+            None,
+        )
+        if appointment is None or appointment["client_id"] != client_id:
+            raise MockFailure("Agendamento não encontrado.", code="not_found", status_code=404)
+        if appointment["status"] not in {"pending", "confirmed"}:
+            raise MockFailure("Este agendamento não pode ser remarcado.", code="invalid_transition", status_code=400)
+        if _local_start(appointment) - MOCK_NOW < timedelta(hours=12):
+            raise MockFailure(
+                "A remarcação deve ser feita com pelo menos 12 horas de antecedência.",
+                code="reschedule_deadline",
+                status_code=400,
+            )
+        try:
+            new_start = datetime.fromisoformat(start_time)
+            if new_start.tzinfo is None:
+                new_start = new_start.replace(tzinfo=LOCAL_TIMEZONE)
+        except ValueError as error:
+            raise MockFailure("O novo horário é inválido.", code="invalid_date", status_code=400) from error
+        if new_start < MOCK_NOW + timedelta(hours=2) or new_start > MOCK_NOW + timedelta(days=30):
+            raise MockFailure("O novo horário está fora da janela permitida.", code="invalid_date", status_code=400)
+        if new_start.weekday() == 6:
+            raise MockFailure("O expediente não atende aos domingos.", code="invalid_date", status_code=400)
+        closing = datetime.combine(new_start.date(), time(18, 0), LOCAL_TIMEZONE)
+        busy_end = new_start + timedelta(
+            minutes=appointment["duration_minutes"] + 15
+        )
+        if new_start < datetime.combine(new_start.date(), time(9, 0), LOCAL_TIMEZONE) or busy_end > closing:
+            raise MockFailure("O novo horário está fora do expediente.", code="invalid_date", status_code=400)
+        for existing in _APPOINTMENTS:
+            if (
+                existing["id"] != appointment_id
+                and existing["barber_id"] == appointment["barber_id"]
+                and existing["status"] != "cancelled"
+            ):
+                existing_start = _local_start(existing)
+                existing_end = existing_start + timedelta(
+                    minutes=existing["duration_minutes"] + 15
+                )
+                if new_start < existing_end and busy_end > existing_start:
+                    raise MockFailure(
+                        "Este horário não está mais disponível.",
+                        code="appointment_conflict",
+                        status_code=400,
+                    )
+        updated = {
+            **appointment,
+            "date": new_start.date().isoformat(),
+            "time": new_start.strftime("%H:%M"),
+        }
+        return MockResult(_present_appointment(updated))
 
     @classmethod
     async def update_appointment_status(

@@ -45,6 +45,43 @@ class MockRepositoryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(fresh_services[0]["title"], "Corte Masculino")
 
+    async def test_service_catalog_contains_requested_services_and_preserves_existing(self) -> None:
+        services = await MockRepository.services()
+        by_title = {service["title"]: service for service in services}
+
+        self.assertTrue(
+            {
+                "Corte Masculino",
+                "Barba",
+                "Combo",
+                "Sobrancelha",
+                "Pezinho / Acabamento",
+                "Hidratação Capilar",
+            }.issubset(by_title)
+        )
+        self.assertEqual(
+            (by_title["Sobrancelha"]["duration_minutes"], by_title["Sobrancelha"]["price_cents"]),
+            (15, 2000),
+        )
+        self.assertEqual(
+            (
+                by_title["Pezinho / Acabamento"]["duration_minutes"],
+                by_title["Pezinho / Acabamento"]["price_cents"],
+            ),
+            (15, 1500),
+        )
+        self.assertEqual(
+            (
+                by_title["Hidratação Capilar"]["duration_minutes"],
+                by_title["Hidratação Capilar"]["price_cents"],
+            ),
+            (30, 4000),
+        )
+        self.assertEqual(
+            sum(service["title"] == "Sobrancelha" for service in services),
+            1,
+        )
+
     async def test_availability_respects_duration_and_preparation_interval(self) -> None:
         slots = await MockRepository.availability(
             "rafael",
@@ -106,6 +143,19 @@ class MockRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.data["name"], "Lucas Atualizado")
         self.assertFalse(result.persisted)
         self.assertEqual(original["name"], "Lucas Ferreira")
+
+    async def test_reschedule_returns_a_non_persistent_copy(self) -> None:
+        original = await MockRepository.appointment("customer-upcoming-1")
+        result = await MockRepository.reschedule_appointment(
+            "customer-upcoming-1",
+            client_id="client-lucas",
+            start_time="2026-08-25T11:45:00-03:00",
+        )
+        after = await MockRepository.appointment("customer-upcoming-1")
+
+        self.assertEqual(result.data["date"], "2026-08-25")
+        self.assertFalse(result.persisted)
+        self.assertEqual(after["date"], original["date"])
 
     async def test_admin_appointment_filters_combine(self) -> None:
         appointments = await MockRepository.admin_appointments(

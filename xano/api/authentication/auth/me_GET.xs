@@ -1,14 +1,14 @@
 // Get the user record belonging to the authentication token
 query "auth/me" verb=GET {
   api_group = "Authentication"
-  auth = ""
+  auth = "user"
 
   input {
   }
 
   stack {
     // Get the user record based on the auth ID
-    db.get "" {
+    db.get "user" {
       field_name = "id"
       field_value = $auth.id
       output = ["id", "name", "email", "phone", "role", "active"]
@@ -19,12 +19,11 @@ query "auth/me" verb=GET {
       error = "Sessão inválida ou expirada."
     }
 
-    function.run "Quick Start/log_event" {
-      input = {
-        user_id : $user.id
-        action  : "get_auth_user"
-      }
-    } as $event_log
+    db.get "account_security" {
+      field_name = "user_id"
+      field_value = $user.id
+    } as $security
+
   }
 
   response = {
@@ -33,6 +32,7 @@ query "auth/me" verb=GET {
     email: $user.email
     phone: $user.phone
     role : $user.role
+    avatar_url: $security != null ? $security.avatar_url : null
   }
   tags = ["xano:quick-start"]
   guid = "gZw_eUnPtJJCXRh8vh7oixOejtw"

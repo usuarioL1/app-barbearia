@@ -3,6 +3,11 @@ from unittest.mock import patch
 
 import reflex as rx
 
+from app_barbearia.customer_portal import (
+    _appointment_item,
+    _service_image_name,
+    appointments_page,
+)
 from app_barbearia.ui import (
     UNPUBLISHED_ENDPOINT_ERROR,
     _is_unpublished_endpoint_error,
@@ -55,6 +60,64 @@ class UnpublishedEndpointMessageTests(unittest.TestCase):
     def test_xano_mode_selects_xano_without_demo_fallback(self) -> None:
         with patch.dict("os.environ", {"BARBERFLOW_MODE": "xano"}):
             self.assertIsInstance(repository_for(), XanoRepository)
+
+
+class ServiceImageMappingTests(unittest.TestCase):
+    def test_service_images_map_to_distinct_assets(self) -> None:
+        expected = {
+            "Corte Masculino": "service_haircut.jpg",
+            "Barba": "service_beard.jpg",
+            "Combo": "service_combo.jpg",
+            "corte + Barba": "service_combo.jpg",
+            "Sobrancelha": "service_eyebrow.jpg",
+            "Pezinho / Acabamento": "service_edgeup.jpg",
+            "Hidratação Capilar": "service_hydration.jpg",
+        }
+
+        for title, image in expected.items():
+            with self.subTest(title=title):
+                self.assertEqual(_service_image_name(title), image)
+
+        self.assertNotEqual(
+            _service_image_name("Corte Masculino"),
+            _service_image_name("corte + Barba"),
+        )
+
+    def test_service_image_mapping_ignores_title_case_and_whitespace(self) -> None:
+        self.assertEqual(
+            _service_image_name("  CORTE + BARBA "),
+            "service_combo.jpg",
+        )
+        self.assertEqual(
+            _service_image_name("HIDRATAÇÃO CAPILAR"),
+            "service_hydration.jpg",
+        )
+
+    def test_upcoming_appointment_page_contains_complete_list(self) -> None:
+        page = str(appointments_page())
+
+        self.assertIn("Pr\\u00f3ximo Agendamento", page)
+        self.assertIn("Todos os Pr\\u00f3ximos Agendamentos", page)
+        self.assertIn("upcoming_appointments", page)
+        self.assertIn("next_appointments", page)
+        self.assertIn("Carregando agendamentos...", page)
+        self.assertIn("Nenhum pr\\u00f3ximo agendamento.", page)
+
+    def test_upcoming_appointment_item_keeps_supported_cancel_control(self) -> None:
+        item = {
+            "id": "appointment-1",
+            "date_display": "25/08/2026",
+            "time": "09:00",
+            "service_title": "Corte Masculino",
+            "barber_name": "Rafael",
+            "status_label": "Confirmado",
+            "status_color": "#54a86b",
+        }
+
+        component = str(_appointment_item(item))
+
+        self.assertIn("Cancelar", component)
+        self.assertIn("appointment-1", component)
 
 
 if __name__ == "__main__":

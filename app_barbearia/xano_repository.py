@@ -177,13 +177,16 @@ def _user(record: Mapping[str, Any]) -> UserRecord:
     role = _text(record, "role", context="usuário")
     if role not in {"client", "barber", "admin"}:
         raise MockFailure("O sistema retornou um papel inválido.", code="invalid_response")
-    return {
+    user: UserRecord = {
         "id": _text(record, "id", context="usuário"),
         "name": _text(record, "name", context="usuário"),
         "email": _text(record, "email", context="usuário"),
         "phone": _optional_text(record, "phone"),
         "role": role,
     }
+    if "avatar_url" in record:
+        user["avatar_url"] = _optional_text(record, "avatar_url")
+    return user
 
 
 def _service(record: Mapping[str, Any]) -> ServiceRecord:
@@ -443,18 +446,22 @@ class XanoRepository:
         name: str,
         email: str,
         phone: str,
+        avatar_url: str = "",
     ) -> PersistedResult[UserRecord]:
         current = await self.user(user_id)
+        payload: dict[str, str] = {
+            "name": name.strip(),
+            "email": email.strip().casefold(),
+            "phone": phone.strip(),
+        }
+        if avatar_url.strip():
+            payload["avatar_url"] = avatar_url.strip()
         updated = _user(
             _object(
                 await self._request(
                     "PATCH",
                     "auth/me",
-                    payload={
-                        "name": name.strip(),
-                        "email": email.strip().casefold(),
-                        "phone": phone.strip(),
-                    },
+                    payload=payload,
                 ),
                 context="perfil",
             )
@@ -465,6 +472,76 @@ class XanoRepository:
                 code="invalid_response",
             )
         return PersistedResult(updated, "Perfil atualizado.")
+
+    async def change_password(
+        self,
+        *,
+        current_password: str,
+        new_password: str,
+        totp_code: str = "",
+    ) -> PersistedResult[dict[str, bool]]:
+        response = _object(
+            await self._request(
+                "POST",
+                "auth/password/change",
+                payload={
+                    "current_password": current_password,
+                    "new_password": new_password,
+                    "totp_code": totp_code,
+                },
+            ),
+            context="alteração de senha",
+        )
+        return PersistedResult(
+            {"changed": response.get("changed") is True},
+            "Senha alterada.",
+        )
+
+    async def totp_setup(self) -> PersistedResult[dict[str, str]]:
+        response = _object(
+            await self._request("POST", "auth/totp/setup", payload={}),
+            context="configuração TOTP",
+        )
+        secret = response.get("secret")
+        if not isinstance(secret, str) or not secret:
+            raise MockFailure("O sistema não confirmou a configuração TOTP.", code="invalid_response")
+        return PersistedResult({"secret": secret}, "Secret TOTP provisório.")
+
+    async def totp_enable(self, *, code: str) -> PersistedResult[dict[str, bool]]:
+        response = _object(
+            await self._request("POST", "auth/totp/enable", payload={"code": code}),
+            context="ativação TOTP",
+        )
+        if response.get("enabled") is not True:
+            raise MockFailure("O servidor não confirmou a ativação TOTP.", code="invalid_response")
+        return PersistedResult({"enabled": True}, "Autenticação em duas etapas ativada.")
+
+    async def totp_disable(
+        self,
+        *,
+        current_password: str,
+        code: str,
+    ) -> PersistedResult[dict[str, bool]]:
+        response = _object(
+            await self._request(
+                "POST",
+                "auth/totp/disable",
+                payload={"current_password": current_password, "code": code},
+            ),
+            context="desativação TOTP",
+        )
+        if response.get("enabled") is not False:
+            raise MockFailure("O servidor não confirmou a desativação TOTP.", code="invalid_response")
+        return PersistedResult({"enabled": False}, "Autenticação em duas etapas desativada.")
+
+    async def revoke_all_sessions(self) -> PersistedResult[dict[str, bool]]:
+        response = _object(
+            await self._request("POST", "auth/sessions/revoke-all", payload={}),
+            context="revogação de sessões",
+        )
+        if response.get("revoked") is not True:
+            raise MockFailure("O servidor não confirmou a revogação das sessões.", code="invalid_response")
+        return PersistedResult({"revoked": True}, "Todas as sessões foram encerradas.")
 
     async def services(self, *, active_only: bool = True) -> list[ServiceRecord]:
         path = "services" if active_only else "admin/services"
@@ -643,6 +720,26 @@ class XanoRepository:
             )
         )
         return PersistedResult(record, "Agendamento cancelado.")
+
+    async def reschedule_appointment(
+        self,
+        appointment_id: str,
+        *,
+        client_id: str,
+        start_time: str,
+    ) -> PersistedResult[AppointmentRecord]:
+        del client_id
+        record = _appointment(
+            _object(
+                await self._request(
+                    "PATCH",
+                    f"appointments/{appointment_id}/reschedule",
+                    payload={"start_time": start_time},
+                ),
+                context="remarcação",
+            )
+        )
+        return PersistedResult(record, "Agendamento remarcado.")
 
     async def update_appointment_status(
         self,

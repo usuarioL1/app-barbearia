@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import reflex as rx
 
@@ -225,6 +226,12 @@ class AppState(rx.State):
     profile_name: str = "Lucas"
     profile_email: str = "lucas@email.com"
     profile_phone: str = "(11) 98765-4321"
+    profile_avatar_url: str = ""
+    security_current_password: str = ""
+    security_new_password: str = ""
+    security_totp_code: str = ""
+    totp_enabled: bool = False
+    totp_setup_secret: str = ""
 
     services: list[ServiceRecord] = []
     barbers: list[BarberRecord] = []
@@ -254,6 +261,14 @@ class AppState(rx.State):
     next_appointments: list[AppointmentRecord] = []
     historical_appointments: list[AppointmentRecord] = []
     appointment_filter: str = "all"
+    upcoming_period_filter: Literal["all", "7", "30", "90"] = "all"
+    history_period_filter: Literal["all", "30", "90", "365"] = "all"
+    history_category_filter: Literal["Todos", "Cortes", "Barba", "Combos"] = "Todos"
+    selected_appointment: AppointmentRecord | None = None
+    reschedule_appointment_id: str = ""
+    reschedule_date: str = ""
+    reschedule_time: str = ""
+    reschedule_available_times: list[str] = []
 
     selected_service_id: str = "corte"
     selected_service_title: str = "Corte Masculino"
@@ -527,6 +542,22 @@ class AppState(rx.State):
         self.profile_phone = value
 
     @rx.event
+    def set_profile_avatar_url(self, value: str) -> None:
+        self.profile_avatar_url = value
+
+    @rx.event
+    def set_security_current_password(self, value: str) -> None:
+        self.security_current_password = value
+
+    @rx.event
+    def set_security_new_password(self, value: str) -> None:
+        self.security_new_password = value
+
+    @rx.event
+    def set_security_totp_code(self, value: str) -> None:
+        self.security_totp_code = value
+
+    @rx.event
     def logout(self) -> rx.event.EventSpec:
         self._auth_token = ""
         self.is_authenticated = False
@@ -768,6 +799,10 @@ class AppState(rx.State):
         appointments: list[AppointmentRecord],
     ) -> None:
         today = MOCK_NOW.date().isoformat()
+        appointments = sorted(
+            appointments,
+            key=lambda item: (item["date"], item["time"]),
+        )
         self.customer_appointments = appointments
         self.upcoming_appointments = [
             item
@@ -780,6 +815,42 @@ class AppState(rx.State):
             for item in appointments
             if item["status"] in {"completed", "cancelled"} or item["date"] < today
         ]
+
+    @rx.var
+    def filtered_upcoming_appointments(self) -> list[AppointmentRecord]:
+        if self.upcoming_period_filter == "all":
+            return self.upcoming_appointments
+        cutoff = (MOCK_NOW.date() + timedelta(days=int(self.upcoming_period_filter))).isoformat()
+        return [
+            item
+            for item in self.upcoming_appointments
+            if item["date"] <= cutoff
+        ]
+
+    @rx.var
+    def filtered_historical_appointments(self) -> list[AppointmentRecord]:
+        items = self.historical_appointments
+        if self.history_period_filter != "all":
+            cutoff = (MOCK_NOW.date() - timedelta(days=int(self.history_period_filter))).isoformat()
+            items = [item for item in items if item["date"] >= cutoff]
+        category = self.history_category_filter
+        if category == "Todos":
+            return items
+
+        def matches_category(title: str) -> bool:
+            normalized = title.strip().casefold()
+            if category == "Combos":
+                return "combo" in normalized or "corte + barba" in normalized
+            if category == "Barba":
+                return "barba" in normalized
+            if category == "Cortes":
+                return any(
+                    term in normalized
+                    for term in ("corte", "pezinho", "acabamento", "sobrancelha")
+                )
+            return False
+
+        return [item for item in items if matches_category(item["service_title"])]
 
     def _calendar_for_month(self, month: str) -> list[str]:
         year, month_number = (int(part) for part in month.split("-"))
@@ -825,6 +896,7 @@ class AppState(rx.State):
         self.profile_name = user["name"]
         self.profile_email = user["email"]
         self.profile_phone = user["phone"]
+        self.profile_avatar_url = user.get("avatar_url", "")
 
     @rx.event
     async def load_client_portal(self) -> rx.event.EventSpec | None:
@@ -1586,6 +1658,167 @@ class AppState(rx.State):
             self._end_request()
 
     @rx.event
+    async def open_appointment_details(self, appointment_id: str) -> None:
+        self._begin_request()
+        try:
+            appointment = await _repository_for(self).appointment(appointment_id)
+        except MockFailure as error:
+            self.selected_appointment = None
+            self._set_failure(error)
+        else:
+            self.selected_appointment = appointment
+            self.error_message = ""
+            self.success_message = ""
+        finally:
+            self._end_request()
+
+    @rx.event
+    def close_appointment_details(self) -> None:
+        self.selected_appointment = None
+        self.reschedule_appointment_id = ""
+        self.reschedule_date = ""
+        self.reschedule_time = ""
+        self.reschedule_available_times = []
+
+    @rx.event
+    async def begin_reschedule(self, appointment_id: str) -> None:
+        appointment = next(
+            (item for item in self.customer_appointments if item["id"] == appointment_id),
+            None,
+        )
+        if appointment is None:
+            self.error_message = "Não foi possível localizar o agendamento."
+            return
+        if appointment["status"] not in {"pending", "confirmed"}:
+            self.error_message = "Este agendamento não pode ser remarcado."
+            return
+        try:
+            start = datetime.fromisoformat(
+                f"{appointment['date']}T{appointment['time']}"
+            ).replace(tzinfo=LOCAL_TIMEZONE)
+        except ValueError:
+            self.error_message = "Os dados do agendamento são inválidos."
+            return
+        if start - datetime.now(LOCAL_TIMEZONE) < timedelta(hours=12):
+            self.error_message = "A remarcação deve ser feita com pelo menos 12 horas de antecedência."
+            return
+        self.reschedule_appointment_id = appointment_id
+        self.reschedule_date = appointment["date"]
+        self.reschedule_time = ""
+        await self.load_reschedule_times()
+
+    @rx.event
+    async def load_reschedule_times(self) -> None:
+        appointment = next(
+            (item for item in self.customer_appointments if item["id"] == self.reschedule_appointment_id),
+            None,
+        )
+        if appointment is None or not self.reschedule_date:
+            self.reschedule_available_times = []
+            return
+        self._begin_request()
+        try:
+            times = await _repository_for(self).availability(
+                appointment["barber_id"],
+                appointment["service_id"],
+                self.reschedule_date,
+            )
+        except MockFailure as error:
+            self.reschedule_available_times = []
+            self._set_failure(error)
+        else:
+            self.reschedule_available_times = times
+            self.reschedule_time = times[0] if times else ""
+        finally:
+            self._end_request()
+
+    @rx.event
+    def set_reschedule_date(self, value: str) -> None:
+        self.reschedule_date = value
+
+    @rx.event
+    def select_reschedule_time(self, value: str) -> None:
+        if value not in self.reschedule_available_times:
+            self.error_message = "Selecione um horário disponível."
+            return
+        self.reschedule_time = value
+        self.error_message = ""
+
+    @rx.event
+    async def confirm_reschedule(self) -> None:
+        if not self.reschedule_appointment_id or not self.reschedule_time:
+            self.error_message = "Selecione uma nova data e horário disponíveis."
+            return
+        start_time = datetime.fromisoformat(
+            f"{self.reschedule_date}T{self.reschedule_time}"
+        ).replace(tzinfo=LOCAL_TIMEZONE).isoformat()
+        self._begin_request()
+        try:
+            result = await _repository_for(self).reschedule_appointment(
+                self.reschedule_appointment_id,
+                client_id=self.current_user_id,
+                start_time=start_time,
+            )
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
+            appointments = [
+                {
+                    **item,
+                    **{
+                        key: value
+                        for key, value in result.data.items()
+                        if value != ""
+                    },
+                }
+                if item["id"] == self.reschedule_appointment_id
+                else item
+                for item in self.customer_appointments
+            ]
+            self._split_customer_appointments(appointments)
+            self.selected_appointment = result.data
+            self.reschedule_appointment_id = ""
+            self.reschedule_available_times = []
+            self.success_message = result.message
+        finally:
+            self._end_request()
+
+    @rx.event
+    def set_upcoming_period_filter(
+        self,
+        value: Literal["all", "7", "30", "90"],
+    ) -> None:
+        self.upcoming_period_filter = value
+
+    @rx.event
+    def set_history_period_filter(
+        self,
+        value: Literal["all", "30", "90", "365"],
+    ) -> None:
+        self.history_period_filter = value
+
+    @rx.event
+    def set_history_category_filter(
+        self,
+        value: Literal["Todos", "Cortes", "Barba", "Combos"],
+    ) -> None:
+        self.history_category_filter = value
+
+    @rx.event
+    def set_period_filter(self, value: str) -> None:
+        if value == "Todos":
+            if self.appointment_filter == "history":
+                self.history_period_filter = "all"
+            else:
+                self.upcoming_period_filter = "all"
+            return
+        days = value.replace(" dias", "").strip()
+        if self.appointment_filter == "history":
+            self.history_period_filter = days if days in {"30", "90", "365"} else "all"
+        else:
+            self.upcoming_period_filter = days if days in {"7", "30", "90"} else "all"
+
+    @rx.event
     def set_appointment_filter(self, value: Literal["all", "upcoming", "history"]) -> None:
         self.appointment_filter = value
 
@@ -1702,6 +1935,12 @@ class AppState(rx.State):
             self.error_message = "Informe um telefone válido."
             self.success_message = ""
             return
+        if self.profile_avatar_url:
+            parsed = urlparse(self.profile_avatar_url)
+            if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+                self.error_message = "Informe uma URL HTTPS válida para a foto."
+                self.success_message = ""
+                return
         self._begin_request()
         try:
             result = await _repository_for(self).update_profile(
@@ -1709,11 +1948,98 @@ class AppState(rx.State):
                 name=self.profile_name,
                 email=self.profile_email,
                 phone=self.profile_phone,
+                avatar_url=self.profile_avatar_url,
             )
         except MockFailure as error:
             self._set_failure(error)
         else:
             self._present_user(result.data)
             self.success_message = result.message
+        finally:
+            self._end_request()
+
+    @rx.event
+    async def change_account_password(self) -> None:
+        if len(self.security_new_password) < 8:
+            self.error_message = "A nova senha deve conter pelo menos 8 caracteres."
+            return
+        self._begin_request()
+        try:
+            result = await _repository_for(self).change_password(
+                current_password=self.security_current_password,
+                new_password=self.security_new_password,
+                totp_code=self.security_totp_code,
+            )
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
+            self.security_current_password = ""
+            self.security_new_password = ""
+            self.security_totp_code = ""
+            self.success_message = result.message
+        finally:
+            self._end_request()
+
+    @rx.event
+    async def start_totp_setup(self) -> None:
+        self._begin_request()
+        try:
+            result = await _repository_for(self).totp_setup()
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
+            self.totp_setup_secret = result.data["secret"]
+            self.success_message = "Configure o TOTP e confirme o código atual."
+        finally:
+            self._end_request()
+
+    @rx.event
+    async def enable_totp(self) -> None:
+        if len(self.security_totp_code) != 6:
+            self.error_message = "Informe o código TOTP de 6 dígitos."
+            return
+        self._begin_request()
+        try:
+            result = await _repository_for(self).totp_enable(code=self.security_totp_code)
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
+            self.totp_enabled = True
+            self.totp_setup_secret = ""
+            self.security_totp_code = ""
+            self.success_message = result.message
+        finally:
+            self._end_request()
+
+    @rx.event
+    async def disable_totp(self) -> None:
+        self._begin_request()
+        try:
+            result = await _repository_for(self).totp_disable(
+                current_password=self.security_current_password,
+                code=self.security_totp_code,
+            )
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
+            self.totp_enabled = False
+            self.security_current_password = ""
+            self.security_totp_code = ""
+            self.success_message = result.message
+        finally:
+            self._end_request()
+
+    @rx.event
+    async def revoke_all_sessions(self) -> rx.event.EventSpec | None:
+        self._begin_request()
+        try:
+            result = await _repository_for(self).revoke_all_sessions()
+        except MockFailure as error:
+            self._set_failure(error)
+            return None
+        else:
+            self.success_message = result.message
+            _clear_authenticated_session(self)
+            return rx.redirect("/login")
         finally:
             self._end_request()

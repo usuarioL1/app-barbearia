@@ -16,4 +16,5 @@ table "barber" {
     {type: "btree|unique", field: [{name: "user_id"}]}
     {type: "btree", field: [{name: "active"}]}
   ]
+  guid = "dNGakyN4c9pQYTam4HUzYPbDaCc"
 }

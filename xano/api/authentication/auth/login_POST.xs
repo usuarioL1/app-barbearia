@@ -9,7 +9,7 @@ query "auth/login" verb=POST {
 
   stack {
     // Get the user record via email
-    db.get "" {
+    db.get "user" {
       field_name = "email"
       field_value = $input.email
       output = ["id", "created_at", "name", "email", "password", "phone", "role", "active"]
@@ -37,11 +37,20 @@ query "auth/login" verb=POST {
       error_type = "unauthorized"
       error = "E-mail ou senha inválidos."
     }
+
+    db.get "account_security" {
+      field_name = "user_id"
+      field_value = $user.id
+    } as $security
+
+    var $session_version {
+      value = $security != null ? $security.session_version : 0
+    }
   
     // Create an authentication token
     security.create_auth_token {
-      table = ""
-      extras = {}
+      table = "user"
+      extras = {session_version: $session_version}
       expiration = 86400
       id = $user.id
     } as $authToken
