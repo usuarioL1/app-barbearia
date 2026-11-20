@@ -63,6 +63,18 @@ query "barber/appointments" verb=GET {
 
     foreach ($appointments) {
       each as $appointment {
+        var $status {
+          value = $appointment.status
+        }
+
+        conditional {
+          if ($status == null) {
+            var.update $status {
+              value = "pending"
+            }
+          }
+        }
+
         var $item {
           value = {
             id                       : $appointment.id
@@ -75,7 +87,7 @@ query "barber/appointments" verb=GET {
             duration_minutes_snapshot: $appointment.duration_minutes_snapshot
             start_time               : $appointment.start_time|format_timestamp:"Y-m-d\\TH:i:sP":"America/Sao_Paulo"
             end_time                 : $appointment.end_time|format_timestamp:"Y-m-d\\TH:i:sP":"America/Sao_Paulo"
-            status                   : $appointment.status
+            status                   : $status
           }
         }
 

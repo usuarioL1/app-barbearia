@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import os
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -35,6 +37,18 @@ _STATUS_COLORS = {
     "cancelled": "#d9776b",
     "completed": "#aaa69d",
 }
+_STATUS_ALIASES = {
+    "pending": "pending",
+    "pendente": "pending",
+    "confirmed": "confirmed",
+    "confirmado": "confirmed",
+    "cancelled": "cancelled",
+    "canceled": "cancelled",
+    "cancelado": "cancelled",
+    "completed": "completed",
+    "concluido": "completed",
+}
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -232,13 +246,28 @@ def _local_start(record: Mapping[str, Any]) -> datetime:
     return start.astimezone(LOCAL_TIMEZONE)
 
 
-def _appointment(record: Mapping[str, Any]) -> AppointmentRecord:
+def _appointment(
+    record: Mapping[str, Any],
+) -> AppointmentRecord:
     start = _local_start(record)
-    status = _text(record, "status", context="agendamento")
-    if status not in _STATUS_LABELS:
-        raise MockFailure(
-            "O sistema retornou um status inválido.",
-            code="invalid_response",
+    raw_status = record.get("status")
+    if isinstance(raw_status, str):
+        normalized_status = "".join(
+            character
+            for character in unicodedata.normalize(
+                "NFKD",
+                raw_status.strip().casefold(),
+            )
+            if not unicodedata.combining(character)
+        )
+        status = _STATUS_ALIASES.get(normalized_status)
+    else:
+        status = None
+    if status is None:
+        status = "pending"
+        _logger.warning(
+            "Xano returned an empty or unsupported appointment status; "
+            "defaulting to pending."
         )
     cents = _price_cents(record)
     duration = _integer(record, "duration_minutes_snapshot")

@@ -180,7 +180,7 @@ query "appointments" verb=POST {
     duration_minutes_snapshot: $appointment.duration_minutes_snapshot
     start_time               : $appointment.start_time|format_timestamp:"Y-m-d\\TH:i:sP":"America/Sao_Paulo"
     end_time                 : $appointment.end_time|format_timestamp:"Y-m-d\\TH:i:sP":"America/Sao_Paulo"
-    status                   : $appointment.status
+    status                   : "pending"
   }
   guid = "ZFmQbsIetu5IQXx7aL8wk6Etm5w"
 }

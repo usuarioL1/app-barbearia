@@ -78,6 +78,18 @@ query "appointments/{id}" verb=GET {
       field_value = $barber_record.user_id
       output = ["id", "name"]
     } as $barber_user
+
+    var $status {
+      value = $appointment.status
+    }
+
+    conditional {
+      if ($status == null) {
+        var.update $status {
+          value = "pending"
+        }
+      }
+    }
   }
 
   response = {
@@ -92,7 +104,7 @@ query "appointments/{id}" verb=GET {
     duration_minutes_snapshot: $appointment.duration_minutes_snapshot
     start_time               : $appointment.start_time|format_timestamp:"Y-m-d\\TH:i:sP":"America/Sao_Paulo"
     end_time                 : $appointment.end_time|format_timestamp:"Y-m-d\\TH:i:sP":"America/Sao_Paulo"
-    status                   : $appointment.status
+    status                   : $status
   }
   guid = "bBEbsc6yWiE8TPdT-XPNKJ55RFw"
 }

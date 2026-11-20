@@ -238,6 +238,89 @@ class XanoRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(appointment["time"], "09:00")
         self.assertEqual(appointment["price_cents"], 4000)
 
+    async def test_successful_booking_defaults_missing_status_to_pending(self) -> None:
+        response = {
+            "id": 13,
+            "client_id": 4,
+            "barber_id": 2,
+            "service_id": 5,
+            "service_title_snapshot": "Corte",
+            "price_snapshot": "40.00",
+            "duration_minutes_snapshot": 30,
+            "start_time": "2026-08-25T09:00:00-03:00",
+            "end_time": "2026-08-25T09:30:00-03:00",
+        }
+        request = AsyncMock(return_value=response)
+
+        with patch("app_barbearia.xano_repository.request_json", new=request):
+            result = await XanoRepository("session-token").create_appointment(
+                client_id="4",
+                barber_id="2",
+                service_id="5",
+                date="2026-08-25",
+                start_time="09:00",
+            )
+
+        self.assertEqual(result.data["status"], "pending")
+        self.assertEqual(result.data["status_label"], "Pendente")
+        self.assertTrue(result.persisted)
+        self.assertEqual(request.await_args.args[:2], ("POST", "appointments"))
+
+    def test_appointment_reads_default_missing_status_to_pending(self) -> None:
+        with self.assertLogs("app_barbearia.xano_repository", level="WARNING"):
+            appointment = _appointment(self._appointment_payload())
+        self.assertEqual(appointment["status"], "pending")
+        self.assertEqual(appointment["status_label"], "Pendente")
+
+    def test_appointment_statuses_are_normalized(self) -> None:
+        statuses = {
+            "pending": "pending",
+            "pendente": "pending",
+            "confirmed": "confirmed",
+            "confirmado": "confirmed",
+            "cancelled": "cancelled",
+            "cancelado": "cancelled",
+            "completed": "completed",
+            "concluido": "completed",
+            "concluído": "completed",
+        }
+
+        for raw_status, expected in statuses.items():
+            with self.subTest(raw_status=raw_status):
+                appointment = _appointment(
+                    self._appointment_payload(status=raw_status)
+                )
+                self.assertEqual(appointment["status"], expected)
+
+    def test_appointment_statuses_that_are_not_supported_default_to_pending(self) -> None:
+        for raw_status in ("reserved", "", None, [], 123):
+            with self.subTest(raw_status=raw_status):
+                with self.assertLogs(
+                    "app_barbearia.xano_repository",
+                    level="WARNING",
+                ):
+                    appointment = _appointment(
+                        self._appointment_payload(status=raw_status)
+                    )
+
+                self.assertEqual(appointment["status"], "pending")
+
+    @staticmethod
+    def _appointment_payload(*, status: object = None) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "id": 13,
+            "client_id": 4,
+            "barber_id": 2,
+            "service_id": 5,
+            "service_title_snapshot": "Corte",
+            "price_snapshot": "40.00",
+            "duration_minutes_snapshot": 30,
+            "start_time": "2026-08-25T12:00:00Z",
+        }
+        if status is not None:
+            payload["status"] = status
+        return payload
+
 
 if __name__ == "__main__":
     unittest.main()
