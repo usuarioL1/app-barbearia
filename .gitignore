@@ -6,5 +6,7 @@ assets/external/
 *.py[cod]
 profile.yaml
 
+.venv/
+venv/
 .env
 *.log
