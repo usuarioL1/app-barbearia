@@ -83,7 +83,7 @@ A arquitetura do sistema segue a divisão:
 
   * A disponibilidade é calculada a partir do expediente global, da duração do serviço e dos agendamentos não cancelados. Deve haver intervalo de 15 minutos entre atendimentos. Um serviço só pode ser agendado se a duração do atendimento e o intervalo de preparação couberem no expediente.
 
-  * O backend é a autoridade final de disponibilidade. Para verificar conflito, considerar ocupado cada intervalo desde `start_time` até `end_time + 15 minutos` (intervalo de preparação). Rejeitar sobreposição para o mesmo barbeiro quando `início_existente < fim_ocupado_solicitado` e `fim_ocupado_existente > início_solicitado`. A verificação e a criação precisam ser protegidas por um mecanismo atômico suportado pelo Xano (por exemplo, transação/lock ou estratégia equivalente), para que duas reservas simultâneas não ocupem o mesmo horário. Uma simples checagem imediatamente antes do insert não é suficiente. Em conflito, retornar `409` sem criar o agendamento e informar ao cliente que o horário não está mais disponível.
+  * O backend é a autoridade final de disponibilidade. Para verificar conflito, considerar ocupado cada intervalo desde `start_time` até `end_time + 15 minutos` (intervalo de preparação). Rejeitar sobreposição para o mesmo barbeiro quando `início_existente < fim_ocupado_solicitado` e `fim_ocupado_existente > início_solicitado`. A verificação e a criação precisam ser protegidas por um mecanismo atômico suportado pelo Xano (por exemplo, transação/lock ou estratégia equivalente), para que duas reservas simultâneas não ocupem o mesmo horário. Uma simples checagem imediatamente antes do insert não é suficiente. Em conflito, retornar `400` com código `appointment_conflict`, sem criar o agendamento, e informar ao cliente que o horário não está mais disponível.
 
   * Novos agendamentos começam como `pending`. O barbeiro ou administrador pode confirmar, concluir ou cancelar; o cliente pode cancelar o próprio agendamento até 12 horas antes do início. Administradores podem cancelar a qualquer momento. Agendamentos concluídos não podem voltar a estados anteriores. Cancelamentos registram data/hora e autor.
 
@@ -223,7 +223,7 @@ O backend Xano gerenciará as seguintes tabelas principais:
   * `completed` e `cancelled` são estados finais.
 * Um atendimento só pode ser marcado como `completed` após seu horário de término. Administradores podem corrigir dados operacionais por ação administrativa auditada, sem apagar o histórico de estados.
 * Cada alteração de status registra usuário responsável e data/hora em UTC. Para auditoria completa, manter histórico de eventos de status; não sobrescrever silenciosamente o histórico.
-* A criação ou confirmação que resulte em conflito é recusada pelo backend. A verificação de disponibilidade e a gravação devem ser protegidas por mecanismo atômico suportado pelo Xano (por exemplo, transação/lock ou estratégia equivalente); uma checagem isolada antes do insert, mesmo imediatamente antes, não garante proteção contra concorrência. Em conflito, responder `409` e não criar registros parciais.
+* A criação ou confirmação que resulte em conflito é recusada pelo backend. A verificação de disponibilidade e a gravação devem ser protegidas por mecanismo atômico suportado pelo Xano (por exemplo, transação/lock ou estratégia equivalente); uma checagem isolada antes do insert, mesmo imediatamente antes, não garante proteção contra concorrência. Em conflito, responder `400` com código `appointment_conflict` e não criar registros parciais.
 * A política padrão de cancelamento do cliente é até 12 horas antes do início. Depois desse limite, somente barbeiro ou administrador pode cancelar. A política pode ser ajustada pela barbearia.
 
 ## 6. Contrato das APIs
@@ -236,7 +236,7 @@ O backend Xano gerenciará as seguintes tabelas principais:
   * Administração: `GET /admin/appointments?from=...&to=...&barber_id=...`, `PATCH /appointments/{id}/status`, endpoints protegidos `POST`/`PATCH` para criar/editar serviços e barbeiros, `PATCH` para desativá-los e `GET /admin/reports/revenue?period=day|month&date=...`.
 * As rotas são uma proposta de contrato lógico; os caminhos reais devem ser mapeados aos endpoints existentes/criados no Xano, documentados e mantidos consistentes no frontend.
 * Respostas JSON devem usar nomes de campos estáveis em `snake_case`; listas devem retornar estrutura previsível e paginação quando aplicável (`items`, `page`, `page_size`, `total`).
-* Erros devem ter formato uniforme, por exemplo `{"error":{"code":"...","message":"...","details":{}}}`. Usar `400` para entrada inválida, `401` para ausência/invalidade de autenticação, `403` para falta de permissão, `404` para recurso inexistente, `409` para conflito de agenda e `5xx` para falhas inesperadas. Não retornar sucesso se a operação falhou.
+* Erros devem ter formato uniforme, por exemplo `{"error":{"code":"...","message":"...","details":{}}}`. Usar `400` para entrada inválida e conflito de agenda (com código `appointment_conflict` para conflito), `401` para ausência/invalidade de autenticação, `403` para falta de permissão, `404` para recurso inexistente e `5xx` para falhas inesperadas. Não retornar sucesso se a operação falhou.
 * Validar no backend todos os campos, referências, regras de papel, disponibilidade e transições de estado. O frontend não é uma fronteira de segurança.
 
 ## 7. Requisitos não funcionais e privacidade
@@ -251,7 +251,7 @@ O backend Xano gerenciará as seguintes tabelas principais:
 
 1. Um visitante pode criar conta de cliente e entrar; não pode atribuir a si mesmo papel de barbeiro ou administrador.
 2. Um cliente autenticado pode consultar serviços/barbeiros ativos, obter horários disponíveis e criar um agendamento válido.
-3. Duas solicitações concorrentes para horários sobrepostos do mesmo barbeiro não podem resultar em duas reservas; a segunda recebe conflito `409`.
+3. Duas solicitações concorrentes para horários sobrepostos do mesmo barbeiro não podem resultar em duas reservas; a segunda recebe conflito `400` com código `appointment_conflict`.
 4. Um cliente só consulta/cancela os próprios agendamentos e não pode cancelar fora do limite de 12 horas; barbeiro e administrador seguem as permissões definidas.
 5. Barbeiro só consulta sua própria agenda e só atualiza estados permitidos; administrador pode gerenciar a agenda e os cadastros. Cada transição fica registrada no histórico com autor e horário.
 6. Desativar serviço/barbeiro remove-o imediatamente das opções para novas reservas e preserva os agendamentos futuros já registrados; o administrador decide se serão atendidos ou se o cliente será contatado para remarcar.

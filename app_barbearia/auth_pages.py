@@ -3,15 +3,17 @@ import reflex as rx
 from app_barbearia.state import AppState
 from app_barbearia.ui import (
     ACCENT,
+    ACCENT_HOVER,
     FOREGROUND,
     MUTED,
+    SURFACE,
+    SURFACE_RAISED,
     SURFACE_BORDER,
     request_feedback,
 )
 
 
 BACKGROUND = "#090909"
-FIELD_BACKGROUND = "#111110"
 
 
 def _brand_lockup(*, compact: bool = False) -> rx.Component:
@@ -75,7 +77,6 @@ def _auth_field(
     *,
     icon: str,
     height: str,
-    show_password_control: bool = False,
     value: rx.Var[str] | None = None,
     on_change: rx.EventHandler | None = None,
 ) -> rx.Component:
@@ -83,7 +84,7 @@ def _auth_field(
     return rx.hstack(
         rx.icon(
             tag=icon,
-            color="#aaa69d",
+            color=MUTED,
             size=20,
             aria_hidden="true",
         ),
@@ -97,6 +98,7 @@ def _auth_field(
             value=value,
             on_change=on_change,
             width="100%",
+            min_width="0",
             height="100%",
             background="transparent",
             border="none",
@@ -106,22 +108,13 @@ def _auth_field(
             padding="0",
             _placeholder={"color": "#898782"},
         ),
-        rx.cond(
-            show_password_control,
-            rx.icon(
-                tag="eye",
-                color="#aaa69d",
-                size=20,
-                aria_hidden="true",
-            ),
-            rx.fragment(),
-        ),
         align="center",
         gap="12px",
         width="100%",
+        min_width="0",
         height=height,
         padding_x="20px",
-        background_color=FIELD_BACKGROUND,
+        background_color=SURFACE_RAISED,
         border=f"1px solid {SURFACE_BORDER}",
         border_radius="12px",
         _focus_within={
@@ -150,7 +143,7 @@ def _submit_button(
         on_click=on_click,
         width="100%",
         height=height,
-        background=f"linear-gradient(100deg, #dcae5b 0%, #bd8732 100%)",
+        background=f"linear-gradient(100deg, {ACCENT_HOVER} 0%, {ACCENT} 100%)",
         color="#11100e",
         font_size="1rem",
         font_weight="700",
@@ -189,7 +182,6 @@ def _field_group(
                 autocomplete,
                 icon=icon,
                 height=height,
-                show_password_control=field_type == "password",
                 value=(bindings or {}).get(label, (None, None))[0],
                 on_change=(bindings or {}).get(label, (None, None))[1],
             )
@@ -198,6 +190,7 @@ def _field_group(
         align="stretch",
         spacing=spacing,
         width="100%",
+        min_width="0",
     )
 
 
@@ -227,7 +220,7 @@ def _login_promo() -> rx.Component:
         _brand_lockup(),
         rx.text(
             "Sua barbearia mais organizada,\nsempre um passo à frente.",
-            color="#d2cec6",
+            color=MUTED,
             font_size="1.2rem",
             line_height="1.35",
             text_align="center",
@@ -245,7 +238,7 @@ def _login_promo() -> rx.Component:
                     ),
                     rx.text(
                         label,
-                        color="#dedbd5",
+                        color=FOREGROUND,
                         font_size="0.88rem",
                         line_height="1.35",
                         text_align="center",
@@ -354,7 +347,7 @@ def _login_form() -> rx.Component:
             border=f"1px solid {ACCENT}",
             border_radius="12px",
             padding="15px",
-            _hover={"background_color": "#241d11"},
+            _hover={"background_color": "#30210a"},
             _focus={"outline": f"2px solid {FOREGROUND}", "outline_offset": "3px"},
         ),
         rx.hstack(
@@ -376,6 +369,7 @@ def _login_form() -> rx.Component:
         align="stretch",
         spacing="5",
         width="100%",
+        min_width="0",
         max_width="570px",
     )
 
@@ -389,8 +383,9 @@ def login_page() -> rx.Component:
                 rx.box(
                     _login_form(),
                     width="100%",
+                    min_width="0",
                     max_width="650px",
-                    background_color="#111110",
+                    background_color=SURFACE,
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="22px",
                     padding="clamp(28px, 3vw, 48px)",
@@ -400,13 +395,16 @@ def login_page() -> rx.Component:
                 align_items="center",
                 justify_content="center",
                 flex="1 1 42%",
-                width="42%",
+                width="100%",
+                min_width="0",
                 min_height="100vh",
                 padding="clamp(16px, 2vw, 28px)",
-                background_color="#0b0b0b",
+                background_color=BACKGROUND,
+                class_name="lg:w-[42%]",
             ),
             align="stretch",
             width="100%",
+            min_width="0",
             min_height="100vh",
             position="relative",
             z_index="1",
@@ -414,8 +412,7 @@ def login_page() -> rx.Component:
         background_color=BACKGROUND,
         color=FOREGROUND,
         min_height="100vh",
-        overflow="hidden",
-        font_family="Arial, sans-serif",
+        font_family="Inter, Arial, sans-serif",
     )
 
 
@@ -423,7 +420,7 @@ def _side_navigation(active_path: str) -> rx.Component:
     links = [
         ("Início", "/", "house"),
         ("Serviços", "/servicos", "scissors"),
-        ("Equipe", "/servicos", "users_round"),
+        ("Equipe", "/equipe", "users_round"),
         ("Entrar", "/login", "log_in"),
         ("Cadastrar", "/cadastro", "lock_keyhole"),
     ]
@@ -440,15 +437,15 @@ def _side_navigation(active_path: str) -> rx.Component:
                         width="100%",
                     ),
                     href=target,
-                    color="#f0ede7" if target == active_path else "#c3beb4",
-                    background_color="#bd8732" if target == active_path else "transparent",
-                    border_radius="7px",
+                    color=FOREGROUND if target == active_path else MUTED,
+                    background_color=ACCENT if target == active_path else "transparent",
+                    border_radius="9px",
                     font_size="0.84rem",
                     font_weight="600" if target == active_path else "400",
                     padding="10px 12px",
                     text_decoration="none",
                     width="100%",
-                    _hover={"background_color": "#332718"},
+                    _hover={"background_color": "#30210a"},
                     _focus={
                         "outline": f"2px solid {ACCENT}",
                         "outline_offset": "2px",
@@ -464,11 +461,11 @@ def _side_navigation(active_path: str) -> rx.Component:
             aria_label="Navegação pública",
         ),
         align="stretch",
-        width="150px",
+        width="210px",
         min_height="100vh",
-        flex_shrink="0",
-        padding="18px 12px",
-        background_color="#0b0b0a",
+        flex="0 0 210px",
+        padding="20px 14px",
+        background_color=SURFACE,
         border_right=f"1px solid {SURFACE_BORDER}",
         position="relative",
         z_index="2",
@@ -494,7 +491,7 @@ def _secondary_promo(*, recovery: bool) -> rx.Component:
             ),
             rx.text(
                 "Digite seu e-mail para receber\num link de redefinição de senha.",
-                color="#d1cdc5",
+                color=MUTED,
                 text_align="center",
                 white_space="pre-line",
                 line_height="1.5",
@@ -516,7 +513,7 @@ def _secondary_promo(*, recovery: bool) -> rx.Component:
             ),
             rx.text(
                 "Faça parte da nossa barbearia!",
-                color="#d1cdc5",
+                color=MUTED,
                 font_size="1rem",
             ),
             rx.box(width="100px", height="1px", background_color=ACCENT, margin_top="14px"),
@@ -645,38 +642,42 @@ def _secondary_auth_form(*, recovery: bool) -> rx.Component:
 
 def _secondary_auth_page(*, recovery: bool) -> rx.Component:
     return rx.flex(
-        _side_navigation("/cadastro"),
+        _side_navigation("/login" if recovery else "/cadastro"),
         _secondary_promo(recovery=recovery),
         rx.box(
             rx.box(
                 _secondary_auth_form(recovery=recovery),
                 width="100%",
+                min_width="0",
                 max_width="520px",
-                background_color="#111110",
+                background_color=SURFACE,
                 border=f"1px solid {SURFACE_BORDER}",
-                border_radius="16px",
+                border_radius="20px",
                 padding="clamp(26px, 3vw, 48px)",
+                box_shadow="0 18px 70px #00000066",
             ),
             display="flex",
             align_items="center",
             justify_content="center",
             min_height="100vh",
             padding="clamp(24px, 4vw, 54px)",
-            background_color="#0b0b0b",
+            background_color=BACKGROUND,
             flex="1 1 54%",
-            width="54%",
+            width="100%",
+            min_width="0",
             position="relative",
             z_index="1",
+            class_name="md:w-[54%]",
         ),
         align="stretch",
         width="100%",
+        min_width="0",
         min_height="100vh",
         flex_wrap="wrap",
         position="relative",
         background_color=BACKGROUND,
         color=FOREGROUND,
-        font_family="Arial, sans-serif",
-        overflow="hidden",
+        font_family="Inter, Arial, sans-serif",
     )
 
 
@@ -738,27 +739,29 @@ def password_reset_page() -> rx.Component:
     return rx.cond(
         AppState.is_reset_flow,
         rx.flex(
-            _side_navigation("/cadastro"),
+            _side_navigation("/login"),
             rx.box(
                 rx.box(
                     _password_update_form(),
                     width="100%",
                     max_width="520px",
-                    background_color="#111110",
+                    background_color=SURFACE,
                     border=f"1px solid {SURFACE_BORDER}",
-                    border_radius="16px",
+                    border_radius="20px",
                     padding="clamp(26px, 3vw, 48px)",
+                    box_shadow="0 18px 70px #00000066",
                 ),
                 display="flex",
                 align_items="center",
                 justify_content="center",
                 min_height="100vh",
                 padding="clamp(24px, 4vw, 54px)",
-                background_color="#0b0b0b",
+                background_color=BACKGROUND,
                 flex="1 1 54%",
-                width="54%",
+                width="100%",
                 position="relative",
                 z_index="1",
+                class_name="md:w-[54%]",
             ),
             align="stretch",
             width="100%",
@@ -767,8 +770,7 @@ def password_reset_page() -> rx.Component:
             position="relative",
             background_color=BACKGROUND,
             color=FOREGROUND,
-            font_family="Arial, sans-serif",
-            overflow="hidden",
+            font_family="Inter, Arial, sans-serif",
         ),
         _secondary_auth_page(recovery=True),
     )

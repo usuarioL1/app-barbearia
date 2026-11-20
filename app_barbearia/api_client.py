@@ -52,6 +52,12 @@ def _error_details(response: httpx.Response) -> tuple[str, str]:
 
     code = error.get("code")
     message = error.get("message")
+    if (
+        response.status_code == 400
+        and isinstance(message, str)
+        and message.startswith("appointment_conflict:")
+    ):
+        return "appointment_conflict", message.partition(":")[2].strip()
     return (
         code if isinstance(code, str) and code else "request_failed",
         message

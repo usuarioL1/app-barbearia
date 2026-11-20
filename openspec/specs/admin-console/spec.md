@@ -18,11 +18,19 @@ A interface SHALL oferecer um dashboard administrativo com indicadores de agenda
 - **THEN** a interface indica que os dados não puderam ser carregados e permite tentar novamente
 
 ### Requirement: Administrador consulta e opera a agenda da unidade
-A interface SHALL oferecer visualização diária e semanal com filtros de barbeiro e estado, usando o fuso `America/Sao_Paulo` e as informações de atendimento necessárias à gestão.
+A interface SHALL oferecer visualização diária e semanal com filtros de barbeiro e estado, usando o fuso `America/Sao_Paulo` e as informações de atendimento necessárias à gestão, com os dados do repositório selecionado.
 
 #### Scenario: Agenda filtrada
 - **WHEN** um administrador seleciona período, barbeiro ou estado
 - **THEN** a interface apresenta somente os atendimentos que correspondem aos filtros e mantém visível o período consultado
+
+#### Scenario: Seleção de semana e filtros
+- **WHEN** o administrador seleciona uma data, barbeiro ou estado
+- **THEN** a interface exibe a semana correspondente e somente os atendimentos do repositório selecionado que correspondem aos filtros ativos
+
+#### Scenario: Semana sem resultados
+- **WHEN** não há atendimento correspondente à semana e aos filtros no repositório selecionado
+- **THEN** a interface apresenta o estado vazio e mantém visível o período consultado
 
 #### Scenario: Alteração de estado
 - **WHEN** o administrador solicita uma transição de estado permitida e o backend confirma
@@ -59,55 +67,19 @@ A interface SHALL oferecer relatórios diários e mensais que usem os preços sn
 - **THEN** a interface apresenta total zero e um estado vazio, sem incluir atendimentos pendentes, confirmados ou cancelados
 
 ### Requirement: Console administrativo reproduz os designs BarberFlow fornecidos
-A interface administrativa SHALL reconstruir os designs fornecidos como componentes, preservando estrutura, proporções, navegação, hierarquia e aparência preto/dourado. Composições inteiras não devem substituir as telas; assets individuais ausentes devem usar placeholders coerentes, sem acrescentar elementos visuais ausentes da referência.
+A interface administrativa SHALL aplicar preto `#090909` e dourado `#F2A900` às rotas existentes `/admin/*`, refinando navegação, filtros e conteúdo sem substituir componentes por capturas de tela nem inventar indicadores, registros ou ações.
 
 #### Scenario: Administrador navega pelo console
-- **WHEN** o administrador abre dashboard, agenda ou uma seção de gestão
-- **THEN** a tela apresenta a navegação lateral, seleção ativa, cabeçalho, cartões, tabelas, indicadores ou gráficos conforme o design BarberFlow correspondente
+- **WHEN** o administrador abre dashboard, agenda, clientes, serviços, equipe ou usuários
+- **THEN** a interface mantém navegação lateral com rota ativa, cabeçalho e cartões, tabelas ou agenda adequados aos dados e às ações existentes
 
 #### Scenario: Administrador consulta relatórios e configurações
 - **WHEN** o administrador abre relatórios ou configurações
-- **THEN** a interface preserva a hierarquia, os filtros e os agrupamentos visuais representados no design, sem alterar as regras de autorização e os dados apresentados
+- **THEN** a interface mantém a hierarquia, os filtros e os agrupamentos visuais correspondentes, sem alterar permissões, métricas disponíveis ou o caráter informativo das configurações
 
-### Requirement: Dashboard apresenta um resumo operacional demonstrativo
-O dashboard SHALL exibir o período consultado, contagem de agendamentos, faturamento mensal, clientes, comparecimento e agendamentos recentes a partir dos dados mock disponíveis.
-
-#### Scenario: Dashboard carregado
-- **WHEN** o administrador abre o dashboard e a consulta mock é concluída
-- **THEN** a interface apresenta o período e os indicadores derivados dos registros demonstrativos, sem inventar métricas para dados ausentes
-
-#### Scenario: Período sem registros
-- **WHEN** o período consultado não contém agendamentos ou faturamento concluído
-- **THEN** a interface apresenta o estado vazio ou valor zero correspondente, sem contar agendamentos não concluídos como faturamento
-
-### Requirement: Dashboard não persiste dados demonstrativos
-O dashboard SHALL obter seus dados exclusivamente da fonte mock isolada, sem enviar dados ao cliente HTTP ou gravar alterações em Xano.
-
-#### Scenario: Consulta demonstrativa
-- **WHEN** o dashboard carrega seus indicadores ou agendamentos recentes
-- **THEN** os valores permanecem demonstrativos e nenhuma operação é apresentada como persistida
-
-### Requirement: Administrador consulta usuários demonstrativos
-A interface SHALL listar os registros de usuários retornados pela fonte mock, apresentando nome, e-mail e papel sem declarar autenticação ou autorização reais.
-
-#### Scenario: Lista de usuários carregada
-- **WHEN** o administrador abre a seção Usuários e a consulta mock é concluída
-- **THEN** a interface apresenta os usuários demonstrativos e seus papéis disponíveis
-
-#### Scenario: Lista vazia
-- **WHEN** a fonte mock não retorna usuários
-- **THEN** a interface apresenta um estado vazio em vez de inventar registros
-
-### Requirement: Ações de usuário são apresentadas como não persistentes
-A interface SHALL comunicar como simuladas e não persistentes as ações mockadas de criação, edição ou desativação de usuários.
-
-#### Scenario: Ação mock aceita
-- **WHEN** o administrador solicita uma ação de usuário aceita pelo mock
-- **THEN** a interface informa que a ação foi simulada e que nenhum dado foi salvo
-
-#### Scenario: Ação mock recusada
-- **WHEN** o mock recusa uma ação de usuário por validação ou falha
-- **THEN** a interface apresenta o erro sem indicar que o usuário foi alterado
+#### Scenario: Administrador usa o console em uma tela estreita
+- **WHEN** a largura disponível não comporta o layout desktop
+- **THEN** a navegação, os filtros, os cartões e as tabelas se reorganizam sem ocultar controles, dados, mensagens ou ações existentes
 
 ### Requirement: Administrador consulta as configurações operacionais apresentadas
 A interface SHALL apresentar o expediente, fuso horário e limite padrão de cancelamento como informações somente para leitura, sem confirmar alteração ou persistência dessas configurações.
@@ -131,69 +103,6 @@ A interface SHALL permitir escolher relatório diário ou mensal e apresentar fa
 - **WHEN** não há atendimentos concluídos no período selecionado
 - **THEN** o relatório apresenta faturamento zero e não inclui atendimentos pendentes, confirmados ou cancelados
 
-### Requirement: Administrador consulta a equipe de barbeiros
-A seção administrativa SHALL listar os barbeiros mock com nome, especialidade e estado ativo/inativo, mantendo registros inativos disponíveis para consulta administrativa.
-
-#### Scenario: Equipe carregada
-- **WHEN** a consulta mock da equipe é concluída
-- **THEN** a interface exibe os dados disponíveis e o estado de cada barbeiro
-
-#### Scenario: Barbeiro inativo em novo agendamento
-- **WHEN** um barbeiro está inativo e um cliente consulta opções para agendar
-- **THEN** esse barbeiro não aparece entre as opções agendáveis
-
-### Requirement: Ações administrativas da equipe não persistem
-A seção SHALL permitir informar nome e especialidade para criar ou editar barbeiros e desativar registros, validando no mock sem alterar registros ou apresentar operações como persistidas.
-
-#### Scenario: Criação mock aceita
-- **WHEN** o administrador submete nome e especialidade válidos para criação
-- **THEN** a validação mock aceita a ação e informa que nada foi salvo
-
-#### Scenario: Dados obrigatórios ausentes
-- **WHEN** nome ou especialidade não são informados na criação mock
-- **THEN** a interface informa a validação sem apresentar uma alteração persistida
-
-#### Scenario: Edição ou desativação mock
-- **WHEN** o administrador aciona editar ou desativar para um barbeiro
-- **THEN** a operação permanece simulada e não remove o barbeiro nem seus agendamentos históricos
-
-### Requirement: Administrador consulta o catálogo de serviços
-A seção administrativa SHALL listar os serviços mock com título, descrição, preço, duração e estado ativo/inativo; somente serviços ativos são oferecidos para novos agendamentos.
-
-#### Scenario: Catálogo administrativo carregado
-- **WHEN** a consulta mock de serviços é concluída
-- **THEN** a interface exibe os campos disponíveis e o estado de cada serviço, incluindo registros inativos para consulta administrativa
-
-#### Scenario: Serviço inativo no agendamento
-- **WHEN** um serviço está inativo e um cliente consulta opções para um novo agendamento
-- **THEN** esse serviço não aparece entre as opções agendáveis
-
-### Requirement: Ações administrativas de serviço não persistem
-A seção SHALL permitir informar título, descrição, preço e duração para criar ou editar serviços e desativar registros, validando no mock e sem alterar registros ou afirmar persistência.
-
-#### Scenario: Criação mock válida
-- **WHEN** o administrador submete título, preço positivo e duração positiva
-- **THEN** a validação mock aceita a ação e informa que nada foi salvo
-
-#### Scenario: Criação mock inválida
-- **WHEN** o título obrigatório está ausente ou preço ou duração não são valores positivos válidos
-- **THEN** a interface informa a validação sem apresentar uma alteração persistida
-
-#### Scenario: Edição ou desativação mock
-- **WHEN** o administrador aciona editar ou desativar para um serviço
-- **THEN** a operação permanece simulada, sem remover registros de serviço ou histórico associado
-
-### Requirement: Administrador consulta a lista demonstrativa de clientes
-A seção de clientes SHALL exibir, para cada registro disponível, nome, telefone, quantidade de agendamentos e data do último atendimento, preservando o acesso administrativo aos dados mock.
-
-#### Scenario: Lista carregada
-- **WHEN** a consulta mock de clientes é concluída
-- **THEN** a interface apresenta os campos disponíveis para cada cliente sem expor dados além dos exibidos na tela
-
-#### Scenario: Lista vazia
-- **WHEN** a consulta mock não retorna clientes
-- **THEN** a interface apresenta um estado vazio, distinguindo-o do carregamento em andamento
-
 ### Requirement: Administrador pesquisa a lista de clientes
 A lista SHALL filtrar clientes por nome, e-mail ou telefone sem modificar os registros e sem expor o e-mail como uma coluna adicional.
 
@@ -203,54 +112,7 @@ A lista SHALL filtrar clientes por nome, e-mail ou telefone sem modificar os reg
 
 #### Scenario: Busca sem correspondências
 - **WHEN** o administrador informa um termo sem correspondência
-- **THEN** a lista apresenta o estado vazio sem remover ou alterar os registros mock
-
-### Requirement: Ações de cadastro de clientes são apenas simuladas
-A seção SHALL permitir informar dados para criar ou editar clientes e oferecer desativação, encaminhando as ações à validação mock sem alterar registros ou apresentá-las como persistidas.
-
-#### Scenario: Ação mock concluída
-- **WHEN** o administrador submete dados válidos ou aciona desativação e a validação mock aceita a operação
-- **THEN** a interface informa que a ação foi simulada e nenhum registro é gravado ou alterado
-
-#### Scenario: Ação mock inválida ou recusada
-- **WHEN** nome ou telefone são inválidos, os dados não passam pela validação mock ou a operação retorna erro
-- **THEN** a interface informa a falha sem apresentar sucesso ou mudança persistida
-
-### Requirement: Administrador consulta agenda semanal filtrada
-A agenda SHALL exibir a semana da data selecionada, os atendimentos demonstrativos e filtros combináveis por barbeiro e estado, usando datas locais de `America/Sao_Paulo`.
-
-#### Scenario: Seleção de semana e filtros
-- **WHEN** o administrador seleciona uma data, barbeiro ou estado
-- **THEN** a interface exibe a semana correspondente e somente os atendimentos que correspondem aos filtros ativos
-
-#### Scenario: Semana sem resultados
-- **WHEN** não há atendimento mock correspondente à semana e aos filtros
-- **THEN** a interface apresenta o estado vazio e mantém visível o período consultado
-
-### Requirement: Administrador consulta agenda diária
-A agenda SHALL permitir alternar para um dia selecionado e apresentar somente os atendimentos desse dia, mantendo os filtros de barbeiro e estado.
-
-#### Scenario: Visualização diária selecionada
-- **WHEN** o administrador escolhe a visualização diária para uma data
-- **THEN** a interface apresenta apenas os atendimentos da data selecionada que correspondem aos filtros ativos
-
-### Requirement: Administrador solicita transições simuladas de atendimento
-A agenda SHALL permitir as transições administrativas mock válidas entre `pending`, `confirmed`, `cancelled` e `completed`, respeitando as regras de transição e o horário de término.
-
-#### Scenario: Transição aceita
-- **WHEN** o administrador solicita uma transição permitida e o repositório mock a aceita
-- **THEN** a agenda exibe o estado resultante na sessão e identifica a ação como simulada e não persistida
-
-#### Scenario: Transição recusada
-- **WHEN** a transição é inválida ou o repositório mock retorna erro
-- **THEN** a agenda preserva os registros exibidos e informa que a operação não foi concluída
-
-### Requirement: Agenda administrativa não persiste operações mock
-A agenda SHALL usar somente dados demonstrativos nesta etapa, sem chamadas HTTP ao Xano ou gravação durável de consulta ou transição.
-
-#### Scenario: Atualização da agenda mock
-- **WHEN** uma consulta ou transição é concluída
-- **THEN** nenhum dado é apresentado como persistido fora da sessão mock
+- **THEN** a lista apresenta o estado vazio sem remover ou alterar os registros
 
 ### Requirement: Faturamento considera somente atendimentos concluídos
 O relatório SHALL somar o preço snapshot de cada atendimento concluído cuja data local de início pertença ao período selecionado.
@@ -262,3 +124,63 @@ O relatório SHALL somar o preço snapshot de cada atendimento concluído cuja d
 #### Scenario: Falha ao carregar o relatório
 - **WHEN** a consulta do relatório falha
 - **THEN** a interface informa a falha e preserva os indicadores anteriormente carregados
+
+### Requirement: Dados operacionais administrativos usam respostas do Xano
+Quando `BARBERFLOW_MODE=xano`, as telas administrativas SHALL apresentar somente dados e métricas retornados com sucesso pelo Xano, sem substituir falhas ou respostas vazias por dados demonstrativos; no modo mock, SHALL usar somente dados mock sem chamadas HTTP ao Xano.
+
+#### Scenario: Dados operacionais carregados
+- **WHEN** o administrador abre uma tela com dados operacionais e as consultas Xano têm sucesso
+- **THEN** a interface apresenta os registros e métricas retornados para a tela e o período selecionados
+
+#### Scenario: Consulta sem registros
+- **WHEN** uma consulta Xano bem-sucedida não retorna registros para a tela ou filtros atuais
+- **THEN** a interface apresenta o estado vazio correspondente, sem inventar registros ou totais
+
+#### Scenario: Modo Xano sem resposta válida
+- **WHEN** uma consulta falha ou retorna uma resposta inválida
+- **THEN** a interface não apresenta dados demonstrativos como resultado Xano nem indica que a consulta foi concluída com sucesso
+
+#### Scenario: Atualização da agenda mock
+- **WHEN** uma consulta ou transição é concluída no modo mock
+- **THEN** nenhum dado é apresentado como persistido fora da sessão mock
+
+#### Scenario: Consulta ou transição em Xano
+- **WHEN** uma consulta ou transição é confirmada pelo Xano
+- **THEN** a agenda apresenta os dados retornados sem substituí-los por registros demonstrativos
+#### Scenario: Consulta ou transição em Xano
+- **WHEN** uma consulta ou transição é confirmada pelo Xano
+- **THEN** a agenda apresenta os dados retornados sem substituí-los por registros demonstrativos
+
+### Requirement: Ações administrativas dependem de operações Xano disponíveis
+As telas administrativas SHALL oferecer somente ações com operação correspondente permitida, respeitando as transições de `pending` para `confirmed` ou `cancelled` e de `confirmed` para `completed` ou `cancelled`, além do horário de término, e refletindo alterações somente após confirmação do Xano ou identificando explicitamente a simulação no modo mock.
+
+#### Scenario: Transição aceita
+- **WHEN** o administrador solicita uma transição permitida e o repositório selecionado a aceita
+- **THEN** a agenda exibe o estado resultante e identifica a ação como persistida em Xano ou simulada no modo mock
+
+#### Scenario: Transição recusada
+- **WHEN** a transição é inválida ou o repositório selecionado retorna erro
+- **THEN** a agenda preserva os registros exibidos e informa que a operação não foi concluída
+
+#### Scenario: Ação suportada confirmada
+- **WHEN** o administrador solicita uma ação com endpoint disponível e o Xano confirma a alteração
+- **THEN** a interface apresenta o resultado confirmado pelo backend sem simulação ou sucesso otimista
+
+#### Scenario: Ação sem endpoint ou sem permissão
+- **WHEN** uma ação não possui endpoint disponível ou é incompatível com as permissões e o provisionamento manual exigido
+- **THEN** a interface omite ou desabilita o controle e não apresenta a ação como realizada
+
+#### Scenario: Ação suportada recusada
+- **WHEN** o Xano recusa uma ação ou sua resposta não confirma a alteração
+- **THEN** a interface preserva os dados atuais e informa que a operação não foi concluída
+
+### Requirement: 404 técnico de endpoint não publicado mantém o console limpo
+Quando o estado da interface administrativa contém exatamente a mensagem `Unable to locate request.`, a interface SHALL ocultá-la no feedback global e substituir o conteúdo afetado por um estado de dados indisponíveis, sem renderizar registros antigos ou demonstrativos.
+
+#### Scenario: Endpoint de leitura ainda não publicado
+- **WHEN** uma consulta de dados operacionais deixa no estado global a mensagem `Unable to locate request.`
+- **THEN** a interface não exibe a mensagem no topo, não renderiza os dados anteriores dessa tela e apresenta um estado neutro de indisponibilidade sem declarar sucesso da consulta
+
+#### Scenario: Outra mensagem de erro
+- **WHEN** a consulta deixa no estado global qualquer mensagem diferente de `Unable to locate request.`
+- **THEN** a interface preserva o tratamento de erro aplicável e não oculta a falha como se fosse uma consulta bem-sucedida

@@ -11,6 +11,7 @@ from app_barbearia.customer_portal import (
     appointments_page,
     booking_page,
     customer_portal,
+    history_page,
     profile_page,
     services_page,
     team_page,
@@ -37,7 +38,7 @@ app.add_page(
     customer_portal,
     route="/",
     title="BarberFlow | Portal do Cliente",
-    on_load=AppState.load_client_portal,
+    on_load=[AppState.load_client_portal, AppState.load_catalog],
 )
 app.add_page(
     services_page,
@@ -64,10 +65,16 @@ app.add_page(
     on_load=AppState.load_appointments,
 )
 app.add_page(
+    history_page,
+    route="/historico",
+    title="BarberFlow | Histórico",
+    on_load=AppState.load_appointments,
+)
+app.add_page(
     profile_page,
     route="/perfil",
     title="BarberFlow | Meu Perfil",
-    on_load=AppState.load_profile,
+    on_load=[AppState.load_profile, AppState.load_appointments],
 )
 app.add_page(login_page, route="/login", title="BarberFlow | Entrar")
 app.add_page(signup_page, route="/cadastro", title="BarberFlow | Cadastro")

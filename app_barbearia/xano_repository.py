@@ -206,7 +206,7 @@ def _barber(record: Mapping[str, Any]) -> BarberRecord:
 
 
 def _local_start(record: Mapping[str, Any]) -> datetime:
-    value = record.get("start_time")
+    value = record.get("start_time_iso", record.get("start_time"))
     if not isinstance(value, str):
         date_value = record.get("date")
         time_value = record.get("time")
@@ -487,13 +487,19 @@ class XanoRepository:
         barber_id: str = "",
         status: str = "",
         date: str = "",
+        from_date: str = "",
+        to_date: str = "",
     ) -> list[AppointmentRecord]:
+        if date and not (from_date or to_date):
+            from_date = date
+            to_date = date
         params = {
             key: value
             for key, value in {
                 "barber_id": barber_id,
                 "status": status,
-                "date": date,
+                "from": from_date,
+                "to": to_date,
             }.items()
             if value
         }
@@ -502,6 +508,14 @@ class XanoRepository:
             context="agenda administrativa",
         )
         return [_appointment(record) for record in records]
+
+    async def appointment(self, appointment_id: str) -> AppointmentRecord:
+        return _appointment(
+            _object(
+                await self._request("GET", f"appointments/{appointment_id}"),
+                context="agendamento",
+            )
+        )
 
     async def clients(self) -> list[ClientRecord]:
         records = _items(

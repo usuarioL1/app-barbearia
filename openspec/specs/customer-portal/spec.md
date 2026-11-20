@@ -108,19 +108,43 @@ A interface SHALL separar próximos agendamentos e histórico, exibir estados le
 - **THEN** a interface exibe um estado vazio com acesso ao catálogo e à jornada de agendamento
 
 ### Requirement: Telas do cliente reproduzem os designs BarberFlow fornecidos
-A interface do cliente SHALL reconstruir os designs fornecidos como componentes, preservando estrutura, proporções, navegação, hierarquia e aparência preto/dourado. Composições inteiras não devem substituir as telas; assets individuais ausentes devem usar placeholders coerentes, sem acrescentar elementos visuais ausentes da referência.
+A interface do cliente SHALL seguir as referências de Dashboard, Serviços, Agendamentos, Histórico e Perfil, mantendo os dados e bindings existentes, layouts responsivos e componentes funcionais em vez de imagens de tela.
 
 #### Scenario: Visitante acessa autenticação
 - **WHEN** um visitante abre login, cadastro ou recuperação de senha
-- **THEN** a tela apresenta a composição, os campos, a navegação, os controles e a hierarquia visual correspondentes ao design BarberFlow fornecido
+- **THEN** a interface preserva os formulários, campos, mensagens e ações existentes dentro da identidade visual BarberFlow
+
+#### Scenario: Cliente usa a navegação compartilhada
+- **WHEN** um cliente abre `/`, `/agendamentos`, `/servicos`, `/perfil`, `/historico` ou `/agendar`
+- **THEN** a interface mantém links para Início, Meus Agendamentos, Serviços, Meu Perfil, Histórico e Sair, realça a rota ativa com fundo dourado e texto e ícone pretos, e identifica o usuário autenticado no cabeçalho
 
 #### Scenario: Cliente navega pelo portal e catálogo
-- **WHEN** o cliente abre o portal, o catálogo, seu perfil ou seus agendamentos
-- **THEN** as telas mantêm a navegação lateral, cartões, informações e organização visual representadas nos designs correspondentes
+- **WHEN** um cliente abre o portal, serviços, equipe, perfil ou agendamentos
+- **THEN** as telas mantêm a navegação, os dados, campos e ações suportados pelo sistema, organizados segundo a hierarquia visual da rota
+
+#### Scenario: Dashboard apresenta dados do cliente
+- **WHEN** um cliente abre `/`
+- **THEN** a interface organiza próximo agendamento, chamada para agendar, até quatro serviços ativos, histórico recente e banner em cartões responsivos, usando somente dados carregados para a conta
+
+#### Scenario: Catálogo permite pré-selecionar serviço
+- **WHEN** um cliente abre `/servicos` e seleciona um serviço retornado pelo sistema
+- **THEN** a interface apresenta os serviços disponíveis em cartões responsivos e inicia `/agendar` com o serviço selecionado pelo binding existente
+
+#### Scenario: Agendamentos preservam ações suportadas
+- **WHEN** um cliente alterna entre próximos agendamentos e histórico em `/agendamentos`
+- **THEN** a interface usa os filtros existentes, mostra os dados do cliente e mantém o cancelamento sujeito à regra vigente de 12 horas, sem sucesso otimista
+
+#### Scenario: Perfil preserva edição existente
+- **WHEN** um cliente consulta e salva seu perfil
+- **THEN** a interface apresenta e atualiza somente os campos suportados, usando o binding e o feedback existentes
 
 #### Scenario: Cliente abre o fluxo de agendamento
-- **WHEN** o cliente abre a jornada de agendamento
-- **THEN** a interface apresenta as etapas, seleções de serviço e barbeiro, calendário, horários e resumo na composição visual fornecida, mantendo esses elementos como componentes da aplicação
+- **WHEN** um cliente abre `/agendar` e seleciona serviço, barbeiro, data e horário disponível
+- **THEN** a interface apresenta escolhas legíveis, calendário e resumo com a ação de confirmação ligada ao handler existente, sem alterar disponibilidade ou regra de negócio
+
+#### Scenario: Layout estreito
+- **WHEN** a largura disponível não comporta a composição desktop
+- **THEN** a navegação, os cartões e os campos se reorganizam sem cortar conteúdo funcional ou exigir eventos novos
 
 ### Requirement: Campos do cadastro público
 A rota `/cadastro` SHALL apresentar nome, e-mail, telefone, senha e confirmação e não oferecer um campo para escolher o papel da conta.
@@ -206,55 +230,59 @@ A tela SHALL filtrar os serviços carregados por texto e permitir iniciar um age
 A rota `/agendamentos` SHALL apresentar próximos agendamentos e histórico do cliente corrente, oferecer filtros entre todos, próximos e histórico e mostrar estados vazios apropriados.
 
 #### Scenario: Cliente possui registros
-- **WHEN** o repositório mockado retorna agendamentos do cliente corrente
+- **WHEN** o repositório selecionado retorna agendamentos do cliente corrente
 - **THEN** a tela separa próximos atendimentos e histórico e permite alternar a visualização
 
 #### Scenario: Cliente não possui registros
-- **WHEN** a consulta retorna listas vazias e termina o carregamento
+- **WHEN** a consulta do repositório selecionado retorna lista vazia e termina o carregamento
 - **THEN** a tela mostra estados vazios e oferece acesso à jornada de agendamento
 
 ### Requirement: Cancelamento de agendamento do cliente
-A interface SHALL permitir solicitar cancelamento de agendamento próprio pendente ou confirmado somente com pelo menos 12 horas de antecedência e refletir a resposta do repositório mockado sem sucesso otimista.
+A interface SHALL permitir solicitar cancelamento de agendamento próprio pendente ou confirmado somente com pelo menos 12 horas de antecedência e refletir a resposta do repositório selecionado sem sucesso otimista.
 
 #### Scenario: Cancelamento aceito
-- **WHEN** o cliente solicita cancelar um de seus agendamentos elegíveis dentro do limite e o mock aceita
-- **THEN** a tela atualiza o registro para cancelado e identifica a operação como simulada
+- **WHEN** o cliente solicita cancelar um de seus agendamentos elegíveis dentro do limite e o repositório selecionado confirma a operação
+- **THEN** a tela atualiza o registro para cancelado e indica sucesso persistido em Xano ou simulado no modo mock
 
 #### Scenario: Limite excedido, estado inelegível ou falha
-- **WHEN** o cancelamento não é permitido ou o repositório retorna falha
-- **THEN** a tela mantém o registro exibido sem alteração e apresenta a mensagem de erro
+- **WHEN** o cancelamento não é permitido ou o repositório selecionado retorna falha
+- **THEN** a tela mantém o estado retornado pelo sistema sem alteração otimista e apresenta a mensagem de erro
 
 ### Requirement: Seleção de opções de agendamento
-A rota `/agendar` SHALL permitir selecionar serviço e barbeiro ativos, data e horário retornado pela disponibilidade mockada, apresentando calendário e resumo com preço e duração.
+A rota `/agendar` SHALL permitir selecionar serviço e barbeiro ativos, data e horário retornado pela disponibilidade do repositório selecionado, apresentando calendário e resumo com preço e duração.
 
 #### Scenario: Consultar disponibilidade
 - **WHEN** o cliente abre o fluxo ou altera serviço, barbeiro ou data
-- **THEN** a interface atualiza as opções de horário e o resumo conforme os dados selecionados
+- **THEN** a interface atualiza as opções de horário e o resumo conforme os dados do repositório selecionado e a seleção atual
 
 #### Scenario: Horário disponível
 - **WHEN** a consulta retorna horários para a seleção atual
 - **THEN** o cliente pode selecionar um deles e revisar serviço, barbeiro, data, hora, preço e duração antes de confirmar
 
 #### Scenario: Consulta de disponibilidade falha
-- **WHEN** a consulta mockada falha
-- **THEN** a interface limpa os horários antigos e impede confirmar com uma opção desatualizada
+- **WHEN** a consulta do repositório selecionado falha
+- **THEN** a interface limpa os horários antigos e impede confirmar com uma opção desatualizada ou simulada em modo Xano
 
 ### Requirement: Confirmação simulada de agendamento
-A interface SHALL habilitar a confirmação somente para um horário atualmente selecionado e disponível, tratando conflitos sem apresentar sucesso nem persistir uma reserva.
+A interface SHALL habilitar a confirmação somente para um horário atualmente selecionado e disponível, tratando conflitos sem sucesso otimista.
 
 #### Scenario: Confirmação aceita pelo mock
 - **WHEN** o cliente confirma um horário disponível e o repositório mockado aceita a solicitação
 - **THEN** a interface mostra os dados da confirmação e informa que nada foi salvo
 
+#### Scenario: Confirmação persistida em Xano
+- **WHEN** o cliente confirma um horário disponível e o Xano aceita a solicitação
+- **THEN** a interface mostra os dados da reserva e identifica a operação como persistida
+
 #### Scenario: Horário indisponível na confirmação
-- **WHEN** o repositório mockado rejeita a confirmação por conflito
-- **THEN** a interface informa a indisponibilidade, limpa o horário selecionado e solicita atualização das opções
+- **WHEN** o repositório selecionado rejeita a confirmação por conflito
+- **THEN** a interface informa a indisponibilidade, limpa o horário selecionado e solicita atualização das opções sem indicar sucesso
 
 ### Requirement: Dashboard do cliente
 A rota `/` SHALL apresentar a saudação do portal e os próximos agendamentos do cliente corrente, com estados de carregamento ou vazio e atalhos para perfil e lista completa.
 
 #### Scenario: Cliente possui próximos agendamentos
-- **WHEN** a consulta mockada do portal retorna próximos agendamentos
+- **WHEN** a consulta do repositório selecionado retorna próximos agendamentos
 - **THEN** a tela inicial apresenta esses registros e oferece acesso a todos os agendamentos e ao perfil
 
 #### Scenario: Cliente não possui próximos agendamentos
@@ -335,3 +363,28 @@ When Xano mode is active, the catalog SHALL load services and barbers from their
 #### Scenario: Catalog is empty or unavailable
 - **WHEN** an endpoint returns no active records or its request fails
 - **THEN** the application shows an empty or error state and does not offer fictitious records for a booking
+
+### Requirement: Cliente acessa seu histórico em uma rota dedicada
+A rota `/historico` SHALL apresentar somente o histórico do cliente autenticado, sem introduzir registros, preços ou resumos não retornados ou derivados dos dados carregados.
+
+#### Scenario: Histórico disponível
+- **WHEN** o cliente autenticado abre `/historico` com atendimentos concluídos
+- **THEN** a interface lista seus serviços, barbeiros, datas e horários locais, estados e preços disponíveis, com acesso consistente à navegação do portal
+
+#### Scenario: Histórico vazio
+- **WHEN** o cliente abre `/historico` sem atendimentos concluídos
+- **THEN** a interface apresenta um estado vazio e não inventa registros ou totais
+
+### Requirement: Controles ilustrativos não simulam operações indisponíveis
+A interface SHALL desabilitar ou omitir ações de referência que não tenham suporte nos handlers e APIs existentes, sem indicar que uma operação foi realizada.
+
+#### Scenario: Ação sem suporte
+- **WHEN** uma referência inclui remarcar, detalhes, upload de foto, autenticação em duas etapas, sair de todos os dispositivos ou filtros sem binding existente
+- **THEN** a interface omite o controle ou o apresenta desabilitado sem executar operação ou exibir sucesso
+
+### Requirement: Fotografias locais são decorativas e não identificam usuários
+As imagens fotográficas das telas do cliente SHALL ser servidas de assets locais e não apresentar recortes ilustrativos como retratos verificados de usuários ou profissionais nomeados.
+
+#### Scenario: Imagens de serviço e banners
+- **WHEN** uma tela do cliente apresenta fotografia de serviço ou ambiente
+- **THEN** a imagem carrega de um asset local sem substituir o conteúdo funcional nem representar identidade pessoal verificada

@@ -11,10 +11,15 @@ from app_barbearia.mock_repository import (
 from app_barbearia.state import AppState
 from app_barbearia.ui import (
     ACCENT,
+    DANGER,
     FOREGROUND,
+    INFO,
     MUTED,
+    SUCCESS,
     SURFACE,
+    SURFACE_RAISED,
     SURFACE_BORDER,
+    WARNING,
     role_layout,
 )
 
@@ -39,38 +44,44 @@ ADMIN_LINKS = [
 ]
 
 
-def _panel(title: str, content: rx.Component) -> rx.Component:
+def _panel(
+    title: str,
+    content: rx.Component,
+    min_height: str | None = None,
+) -> rx.Component:
     return rx.box(
-        rx.heading(title, as_="h2", size="3", color=FOREGROUND, margin_bottom="12px"),
+        rx.heading(title, as_="h2", size="4", color=ACCENT, margin_bottom="16px"),
         content,
-        background_color="#111110",
-        border=f"1px solid {SURFACE_BORDER}",
-        border_radius="10px",
-        padding="14px",
+        background_color="#111111ee",
+        border="1px solid #3a3327",
+        border_radius="16px",
+        padding="22px",
         width="100%",
+        min_height=min_height,
+        box_shadow="0 18px 42px #00000066, inset 0 1px 0 #ffffff08",
     )
 
 
 def _badge(status: str | rx.Var[str]) -> rx.Component:
     colors = {
-        "Confirmado": ("#88d19a", "#173823"),
-        "Pendente": ("#e0ad4a", "#3b2c14"),
-        "Em Atendimento": ("#8fc4ff", "#172b40"),
-        "Aguardando": ("#8fc4ff", "#172b40"),
-        "Concluído": ("#d5d5d5", "#292929"),
-        "Cancelado": ("#f17f79", "#3b1e1d"),
-        "Ativo": ("#88d19a", "#173823"),
+        "Confirmado": (SUCCESS, "#173823"),
+        "Pendente": (WARNING, "#3b2c14"),
+        "Em Atendimento": (INFO, "#172b40"),
+        "Aguardando": (INFO, "#172b40"),
+        "Concluído": (FOREGROUND, "#292929"),
+        "Cancelado": (DANGER, "#3b1e1d"),
+        "Ativo": (SUCCESS, "#173823"),
     }
     if isinstance(status, str):
         color, background = colors.get(status, (MUTED, "#252521"))
     else:
         color = rx.cond(
             status == "Confirmado",
-            "#88d19a",
+            SUCCESS,
             rx.cond(
                 status == "Pendente",
-                "#e0ad4a",
-                rx.cond(status == "Cancelado", "#f17f79", "#d5d5d5"),
+                WARNING,
+                rx.cond(status == "Cancelado", DANGER, FOREGROUND),
             ),
         )
         background = rx.cond(
@@ -88,16 +99,16 @@ def _badge(status: str | rx.Var[str]) -> rx.Component:
         background_color=background,
         border_radius="999px",
         padding="4px 9px",
-        font_size="0.65rem",
+        font_size="0.72rem",
         font_weight="700",
         white_space="nowrap",
     )
 
 
 def _action(
-    label: str,
+    label: str | rx.Var[str],
     primary: bool = False,
-    aria_label: str | None = None,
+    aria_label: str | rx.Var[str] | None = None,
     on_click: rx.event.EventSpec | None = None,
 ) -> rx.Component:
     return rx.button(
@@ -108,11 +119,12 @@ def _action(
         color="#17140f" if primary else FOREGROUND,
         background_color=ACCENT if primary else "transparent",
         border=f"1px solid {ACCENT if not primary else ACCENT}",
-        border_radius="6px",
-        padding="7px 10px",
-        font_size="0.68rem",
+        border_radius="9px",
+        padding="9px 12px",
+        font_size="0.75rem",
         font_weight="700" if primary else "500",
         cursor="pointer",
+        min_height="40px",
         _hover={"background_color": ACCENT, "color": "#17140f"},
         _focus={"outline": f"2px solid {FOREGROUND}", "outline_offset": "2px"},
     )
@@ -129,22 +141,53 @@ def _metric(
         rx.text(
             value,
             color=FOREGROUND,
-            font_size="1.25rem",
+            font_size="1.5rem",
             font_weight="700",
             margin_top="8px",
         ),
-        rx.text(label, color=MUTED, font_size="0.66rem"),
+        rx.text(label, color=MUTED, font_size="0.8rem"),
         rx.cond(
             bool(detail),
-            rx.text(detail, color="#69c886", font_size="0.62rem", margin_top="5px"),
+            rx.text(detail, color=SUCCESS, font_size="0.72rem", margin_top="5px"),
             rx.fragment(),
         ),
-        background_color="#111110",
+        background_color=SURFACE_RAISED,
         border=f"1px solid {SURFACE_BORDER}",
-        border_radius="9px",
-        padding="12px",
-        flex="1 1 100px",
-        min_width="100px",
+        border_radius="12px",
+        padding="16px",
+        flex="1 1 170px",
+        min_width="145px",
+    )
+
+
+def _barber_empty_state(
+    title: str,
+    description: str,
+    icon: str,
+) -> rx.Component:
+    return rx.center(
+        rx.vstack(
+            rx.icon(tag=icon, size=34, color=ACCENT, aria_hidden=True),
+            rx.heading(
+                title,
+                as_="h3",
+                size="3",
+                color=FOREGROUND,
+                text_align="center",
+            ),
+            rx.text(
+                description,
+                color=MUTED,
+                font_size="0.8rem",
+                text_align="center",
+                max_width="360px",
+            ),
+            align="center",
+            spacing="2",
+        ),
+        min_height="220px",
+        width="100%",
+        role="status",
     )
 
 
@@ -161,7 +204,7 @@ def _barber_row(
         ),
         rx.box(
             rx.icon(tag="user_round", size=16, color=FOREGROUND, aria_hidden=True),
-            background_color="#333538",
+            background_color=SURFACE_RAISED,
             border_radius="50%",
             width="28px",
             height="28px",
@@ -183,16 +226,12 @@ def _barber_row(
             flex="1",
             min_width="90px",
         ),
-        rx.text(
-            item["status_label"],
-            color=item["status_color"],
-            font_size="0.65rem",
-            font_weight="700",
-        ),
+        _badge(item["status_label"]),
         align="center",
+        flex_wrap="wrap",
         gap="8px",
         width="100%",
-        padding="11px 0",
+        padding="14px 0",
         border_bottom=f"1px solid {SURFACE_BORDER}",
     )
 
@@ -208,7 +247,7 @@ def _barber_action_row(
                 color=FOREGROUND,
                 aria_hidden=True,
             ),
-            background_color="#333538",
+            background_color=SURFACE_RAISED,
             border_radius="50%",
             width="38px",
             height="38px",
@@ -234,7 +273,12 @@ def _barber_action_row(
             flex="1",
         ),
         _badge(item["status_label"]),
-        _appointment_actions(item, actor_role="barber"),
+        rx.box(
+            _appointment_actions(item, actor_role="barber"),
+            width="132px",
+            margin_left="auto",
+            flex_shrink="0",
+        ),
         align="center",
         flex_wrap="wrap",
         gap="9px",
@@ -254,8 +298,8 @@ def _table_row(
             if isinstance(value, rx.Component)
             else rx.text(
                 value,
-                color=MUTED if header else FOREGROUND,
-                font_size="0.63rem" if header else "0.69rem",
+                color=ACCENT if header else FOREGROUND,
+                font_size="0.72rem" if header else "0.78rem",
                 font_weight="700" if header else "400",
                 flex="1 1 85px",
                 min_width="75px",
@@ -361,7 +405,7 @@ def _admin_week_column(day: dict[str, str]) -> rx.Component:
             color=FOREGROUND,
             font_size="0.62rem",
             text_align="center",
-            background_color="#171715",
+            background_color=SURFACE_RAISED,
             padding="8px 2px",
             border_bottom=f"1px solid {SURFACE_BORDER}",
             width="100%",
@@ -573,29 +617,6 @@ def _admin_user_row(item: UserRecord) -> rx.Component:
             item["name"],
             item["email"],
             role,
-            "Ativo",
-            "24/08/2026",
-            rx.flex(
-                _action(
-                    "Editar",
-                    aria_label=f"Editar {item['name']}",
-                    on_click=AppState.perform_admin_record_action(
-                        "user",
-                        "update",
-                        item["id"],
-                    ),
-                ),
-                _action(
-                    "Desativar",
-                    aria_label=f"Desativar {item['name']}",
-                    on_click=AppState.perform_admin_record_action(
-                        "user",
-                        "deactivate",
-                        item["id"],
-                    ),
-                ),
-                gap="4px",
-            ),
         )
     )
 
@@ -623,7 +644,7 @@ def _report_service_row(item: dict[str, str]) -> rx.Component:
         rx.text(
             item["count"] + " · " + item["share"],
             color=MUTED,
-            font_size="0.66rem",
+            font_size="0.78rem",
         ),
         justify="between",
         width="100%",
@@ -673,7 +694,7 @@ def barber_workspace() -> rx.Component:
                     "Sua Agenda de Hoje",
                     as_="h2",
                     size="3",
-                    color=FOREGROUND,
+                    color=ACCENT,
                 ),
                 rx.flex(
                     rx.icon(
@@ -699,7 +720,7 @@ def barber_workspace() -> rx.Component:
                     ),
                     align="center",
                     gap="8px",
-                    background_color="#111110",
+                    background_color=SURFACE,
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="7px",
                     padding="8px 10px",
@@ -719,10 +740,15 @@ def barber_workspace() -> rx.Component:
                                 AppState.barber_appointments.length() == 0,
                                 rx.cond(
                                     AppState.is_loading,
-                                    rx.text("Carregando agenda...", color=MUTED),
-                                    rx.text(
-                                        "Nenhum atendimento nesta data.",
-                                        color=MUTED,
+                                    rx.center(
+                                        rx.text("Carregando agenda...", color=MUTED),
+                                        min_height="220px",
+                                        width="100%",
+                                    ),
+                                    _barber_empty_state(
+                                        "Seu dia está livre",
+                                        "Nenhum atendimento agendado para esta data.",
+                                        "calendar_days",
                                     ),
                                 ),
                                 rx.foreach(AppState.barber_appointments, _barber_row),
@@ -730,6 +756,7 @@ def barber_workspace() -> rx.Component:
                             align="stretch",
                             spacing="0",
                         ),
+                        min_height="340px",
                     ),
                     flex="2 1 540px",
                     min_width="280px",
@@ -757,55 +784,62 @@ def barber_workspace() -> rx.Component:
                     ),
                     _panel(
                         "Próximo Atendimento",
-                        rx.flex(
-                            rx.box(
-                                rx.icon(
-                                    tag="user_round",
-                                    size=28,
-                                    color=FOREGROUND,
-                                    aria_hidden=True,
-                                ),
-                                background_image=(
-                                    "linear-gradient(145deg, #5b4530, #181614)"
-                                ),
-                                border_radius="7px",
-                                width="68px",
-                                height="74px",
-                                display="flex",
-                                align_items="center",
-                                justify_content="center",
-                                flex_shrink="0",
+                        rx.cond(
+                            AppState.barber_next_time == "",
+                            rx.text(
+                                "Nenhum próximo atendimento nesta data.",
+                                color=MUTED,
                             ),
-                            rx.vstack(
-                                rx.text(
-                                    AppState.barber_next_client_name,
-                                    color=FOREGROUND,
-                                    font_size="0.72rem",
-                                    font_weight="600",
-                                ),
-                                rx.text(
-                                    AppState.barber_next_service_title,
-                                    color=MUTED,
-                                    font_size="0.64rem",
-                                ),
-                                rx.flex(
-                                    rx.icon(tag="clock_3", size=13, color=ACCENT),
-                                    rx.text(
-                                        AppState.barber_next_time,
+                            rx.flex(
+                                rx.box(
+                                    rx.icon(
+                                        tag="user_round",
+                                        size=28,
                                         color=FOREGROUND,
-                                        font_size="0.64rem",
+                                        aria_hidden=True,
                                     ),
-                                    align="center",
-                                    gap="5px",
-                                    margin_top="5px",
+                                    background_image=(
+                                        "linear-gradient(145deg, #30210a, #181614)"
+                                    ),
+                                    border_radius="9px",
+                                    width="68px",
+                                    height="74px",
+                                    display="flex",
+                                    align_items="center",
+                                    justify_content="center",
+                                    flex_shrink="0",
                                 ),
-                                align="start",
-                                spacing="1",
-                                flex="1",
+                                rx.vstack(
+                                    rx.text(
+                                        AppState.barber_next_client_name,
+                                        color=FOREGROUND,
+                                        font_size="0.85rem",
+                                        font_weight="600",
+                                    ),
+                                    rx.text(
+                                        AppState.barber_next_service_title,
+                                        color=MUTED,
+                                        font_size="0.78rem",
+                                    ),
+                                    rx.flex(
+                                        rx.icon(tag="clock_3", size=13, color=ACCENT),
+                                        rx.text(
+                                            AppState.barber_next_time,
+                                            color=FOREGROUND,
+                                            font_size="0.78rem",
+                                        ),
+                                        align="center",
+                                        gap="5px",
+                                        margin_top="5px",
+                                    ),
+                                    align="start",
+                                    spacing="1",
+                                    flex="1",
+                                ),
+                                align="center",
+                                gap="10px",
+                                width="100%",
                             ),
-                            align="center",
-                            gap="10px",
-                            width="100%",
                         ),
                     ),
                     flex="1 1 300px",
@@ -825,22 +859,27 @@ def barber_workspace() -> rx.Component:
 
 def barber_appointments_page() -> rx.Component:
     return _barber_page(
-        title="Atualização de Status",
-        description="Atualize o status dos atendimentos em tempo real",
+        title="Atendimentos",
+        description="Atualize os estados permitidos para cada atendimento.",
         active_path="/barbeiro/atendimentos",
         content=rx.flex(
             rx.box(
                 _panel(
-                    "Atendimentos Ativos",
+                    "Atendimentos do Dia",
                     rx.vstack(
                         rx.cond(
                             AppState.barber_appointments.length() == 0,
                             rx.cond(
                                 AppState.is_loading,
-                                rx.text("Carregando atendimentos...", color=MUTED),
-                                rx.text(
-                                    "Nenhum atendimento nesta data.",
-                                    color=MUTED,
+                                rx.center(
+                                    rx.text("Carregando atendimentos...", color=MUTED),
+                                    min_height="220px",
+                                    width="100%",
+                                ),
+                                _barber_empty_state(
+                                    "Agenda tranquila",
+                                    "Nenhum atendimento previsto para esta data.",
+                                    "scissors",
                                 ),
                             ),
                             rx.foreach(
@@ -851,6 +890,7 @@ def barber_appointments_page() -> rx.Component:
                         align="stretch",
                         spacing="0",
                     ),
+                    min_height="340px",
                 ),
                 flex="2 1 560px",
                 min_width="280px",
@@ -866,16 +906,16 @@ def barber_appointments_page() -> rx.Component:
                             align="center",
                             gap="10px",
                             width="100%",
-                            background_color="#1a1917",
+                            background_color=SURFACE_RAISED,
                             border=f"1px solid {SURFACE_BORDER}",
                             border_radius="7px",
                             padding="10px",
                         )
                         for label, icon, color in (
-                            ("Em Atendimento", "play", "#39b879"),
-                            ("Aguardando", "pause", "#408de0"),
-                            ("Concluído", "circle_check", "#68bd56"),
-                            ("Cancelado", "circle_x", "#e4544f"),
+                            ("Pendente", "clock_3", WARNING),
+                            ("Confirmado", "circle_check", SUCCESS),
+                            ("Concluído", "circle_check", FOREGROUND),
+                            ("Cancelado", "circle_x", DANGER),
                         )
                     ],
                         align="stretch",
@@ -899,36 +939,121 @@ def barber_profile_page() -> rx.Component:
         description="Informações do profissional",
         active_path="/barbeiro/perfil",
         content=_panel(
-            "Rafael Silva",
-            rx.flex(
-                rx.box(
-                    rx.icon(
-                        tag="user_round",
-                        size=32,
-                        color=FOREGROUND,
-                        aria_hidden=True,
+            "Perfil profissional",
+            rx.grid(
+                rx.flex(
+                    rx.box(
+                        rx.icon(
+                            tag="user_round",
+                            size=34,
+                            color=ACCENT,
+                            aria_hidden=True,
+                        ),
+                        background_image=(
+                            "radial-gradient(circle at 30% 25%, #f2a90035, transparent 70%), "
+                            "linear-gradient(145deg, #30210a, #181614)"
+                        ),
+                        border="1px solid #6a4b0d",
+                        border_radius="50%",
+                        width="84px",
+                        height="84px",
+                        display="flex",
+                        align_items="center",
+                        justify_content="center",
+                        flex_shrink="0",
                     ),
-                    background_image="linear-gradient(145deg, #5b4530, #181614)",
-                    border_radius="50%",
-                    width="72px",
-                    height="72px",
-                    display="flex",
-                    align_items="center",
-                    justify_content="center",
+                    rx.vstack(
+                        rx.text(
+                            AppState.user_name,
+                            color=FOREGROUND,
+                            font_size="1.1rem",
+                            font_weight="700",
+                        ),
+                        rx.text(
+                            rx.cond(
+                                AppState.user_role == "barber",
+                                "Barbeiro",
+                                "Função não informada",
+                            ),
+                            color=MUTED,
+                            font_size="0.8rem",
+                        ),
+                        rx.text(
+                            "Especialidade não informada no perfil atual",
+                            color=MUTED,
+                            font_size="0.72rem",
+                        ),
+                        align="start",
+                        spacing="2",
+                    ),
+                    align="center",
+                    gap="18px",
+                    width="100%",
+                    background_color=SURFACE_RAISED,
+                    border=f"1px solid {SURFACE_BORDER}",
+                    border_radius="14px",
+                    padding="20px",
                 ),
                 rx.vstack(
-                    rx.text("Barbeiro", color=MUTED, font_size="0.75rem"),
                     rx.text(
-                        "Especialidade: Corte Clássico",
+                        "Status da sessão",
+                        color=MUTED,
+                        font_size="0.72rem",
+                        font_weight="600",
+                    ),
+                    rx.text(
+                        rx.cond(
+                            AppState.is_authenticated,
+                            "Ativo",
+                            "Sessão não autenticada",
+                        ),
+                        color=rx.cond(AppState.is_authenticated, SUCCESS, MUTED),
+                        background_color=rx.cond(
+                            AppState.is_authenticated,
+                            "#173823",
+                            "#252521",
+                        ),
+                        border=rx.cond(
+                            AppState.is_authenticated,
+                            "1px solid #2f7042",
+                            f"1px solid {SURFACE_BORDER}",
+                        ),
+                        border_radius="999px",
+                        padding="6px 12px",
+                        font_size="0.75rem",
+                        font_weight="700",
+                        white_space="nowrap",
+                    ),
+                    rx.text(
+                        "Disponibilidade da unidade",
+                        color=ACCENT,
+                        font_size="0.72rem",
+                        font_weight="700",
+                        margin_top="10px",
+                    ),
+                    rx.text(
+                        "Segunda a sábado · 09:00 às 18:00",
                         color=FOREGROUND,
                         font_size="0.8rem",
                     ),
+                    rx.text(
+                        "America/Sao_Paulo",
+                        color=MUTED,
+                        font_size="0.72rem",
+                    ),
                     align="start",
                     spacing="2",
+                    background_color=SURFACE_RAISED,
+                    border=f"1px solid {SURFACE_BORDER}",
+                    border_radius="14px",
+                    padding="20px",
+                    width="100%",
                 ),
-                align="center",
-                gap="14px",
+                grid_template_columns="repeat(auto-fit, minmax(240px, 1fr))",
+                spacing="4",
+                width="100%",
             ),
+            min_height="260px",
         ),
     )
 
@@ -936,7 +1061,7 @@ def barber_profile_page() -> rx.Component:
 def _revenue_chart() -> rx.Component:
     return rx.box(
         rx.flex(
-            rx.heading("Faturamento Mensal", as_="h2", size="3", color=FOREGROUND),
+            rx.heading("Faturamento Mensal", as_="h2", size="3", color=ACCENT),
             rx.text(
                 AppState.admin_revenue_display,
                 color=FOREGROUND,
@@ -957,10 +1082,11 @@ def _revenue_chart() -> rx.Component:
             width="100%",
             height="170px",
         ),
-        background_color="#111110",
+        background_color=SURFACE,
         border=f"1px solid {SURFACE_BORDER}",
-        border_radius="10px",
-        padding="14px",
+        border_radius="14px",
+        padding="20px",
+        box_shadow="0 12px 32px #00000033",
         flex="2 1 350px",
     )
 
@@ -1053,7 +1179,7 @@ def admin_agenda_page() -> rx.Component:
                     value=AppState.admin_filter_barber,
                     on_change=AppState.set_admin_barber_filter,
                     aria_label="Filtrar por barbeiro",
-                    background_color="#111110",
+                    background_color=SURFACE,
                     color=FOREGROUND,
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="7px",
@@ -1068,7 +1194,7 @@ def admin_agenda_page() -> rx.Component:
                     value=AppState.admin_filter_status,
                     on_change=AppState.set_admin_status_filter,
                     aria_label="Filtrar por status",
-                    background_color="#111110",
+                    background_color=SURFACE,
                     color=FOREGROUND,
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="7px",
@@ -1087,7 +1213,7 @@ def admin_agenda_page() -> rx.Component:
                         value=AppState.admin_date,
                         on_change=AppState.set_admin_date,
                         aria_label="Data da agenda administrativa",
-                        background_color="#111110",
+                        background_color=SURFACE,
                         color=FOREGROUND,
                         border=f"1px solid {SURFACE_BORDER}",
                         border_radius="7px",
@@ -1160,12 +1286,12 @@ def admin_agenda_page() -> rx.Component:
                         ),
                         rx.grid(
                             rx.foreach(AppState.admin_week_days, _admin_week_column),
-                            columns="7",
+                            grid_template_columns=(
+                                "repeat(auto-fit, minmax(min(100%, 150px), 1fr))"
+                            ),
                             width="100%",
-                            min_width="980px",
                             gap="4px",
                         ),
-                        overflow_x="auto",
                         align="stretch",
                         spacing="2",
                     ),
@@ -1188,7 +1314,7 @@ def admin_clients_page() -> rx.Component:
                     aria_label="Buscar clientes",
                     value=AppState.admin_client_search,
                     on_change=AppState.set_admin_client_search,
-                    background_color="#111110",
+                    background_color=SURFACE,
                     color=FOREGROUND,
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="7px",
@@ -1229,7 +1355,7 @@ def admin_clients_page() -> rx.Component:
                             aria_label="Nome do cliente",
                             auto_complete="name",
                             required=True,
-                            background_color="#111110",
+                            background_color=SURFACE,
                             color=FOREGROUND,
                             border=f"1px solid {SURFACE_BORDER}",
                             border_radius="7px",
@@ -1244,7 +1370,7 @@ def admin_clients_page() -> rx.Component:
                             aria_label="Telefone do cliente",
                             auto_complete="tel",
                             required=True,
-                            background_color="#111110",
+                            background_color=SURFACE,
                             color=FOREGROUND,
                             border=f"1px solid {SURFACE_BORDER}",
                             border_radius="7px",
@@ -1257,7 +1383,11 @@ def admin_clients_page() -> rx.Component:
                                 on_click=AppState.close_admin_client_form,
                             ),
                             _action(
-                                "Enviar para validação mock",
+                                rx.cond(
+                                    AppState.admin_client_form_action == "create",
+                                    "Criar cliente",
+                                    "Salvar alterações",
+                                ),
                                 primary=True,
                                 on_click=AppState.submit_admin_client_form,
                             ),
@@ -1340,7 +1470,7 @@ def admin_services_page() -> rx.Component:
                             placeholder="Título",
                             aria_label="Título do serviço",
                             required=True,
-                            background_color="#111110",
+                            background_color=SURFACE,
                             color=FOREGROUND,
                             border=f"1px solid {SURFACE_BORDER}",
                             border_radius="7px",
@@ -1353,7 +1483,7 @@ def admin_services_page() -> rx.Component:
                             on_change=AppState.set_admin_service_form_description,
                             placeholder="Descrição",
                             aria_label="Descrição do serviço",
-                            background_color="#111110",
+                            background_color=SURFACE,
                             color=FOREGROUND,
                             border=f"1px solid {SURFACE_BORDER}",
                             border_radius="7px",
@@ -1371,7 +1501,7 @@ def admin_services_page() -> rx.Component:
                                 min="0.01",
                                 step="0.01",
                                 required=True,
-                                background_color="#111110",
+                                background_color=SURFACE,
                                 color=FOREGROUND,
                                 border=f"1px solid {SURFACE_BORDER}",
                                 border_radius="7px",
@@ -1388,7 +1518,7 @@ def admin_services_page() -> rx.Component:
                                 min="1",
                                 step="1",
                                 required=True,
-                                background_color="#111110",
+                                background_color=SURFACE,
                                 color=FOREGROUND,
                                 border=f"1px solid {SURFACE_BORDER}",
                                 border_radius="7px",
@@ -1405,7 +1535,11 @@ def admin_services_page() -> rx.Component:
                                 on_click=AppState.close_admin_service_form,
                             ),
                             _action(
-                                "Enviar para validação mock",
+                                rx.cond(
+                                    AppState.admin_service_form_action == "create",
+                                    "Criar serviço",
+                                    "Salvar alterações",
+                                ),
                                 primary=True,
                                 on_click=AppState.submit_admin_service_form,
                             ),
@@ -1477,7 +1611,7 @@ def admin_team_page() -> rx.Component:
                             aria_label="Nome do profissional",
                             required=True,
                             auto_complete="name",
-                            background_color="#111110",
+                            background_color=SURFACE,
                             color=FOREGROUND,
                             border=f"1px solid {SURFACE_BORDER}",
                             border_radius="7px",
@@ -1491,7 +1625,7 @@ def admin_team_page() -> rx.Component:
                             placeholder="Especialidade",
                             aria_label="Especialidade do profissional",
                             required=True,
-                            background_color="#111110",
+                            background_color=SURFACE,
                             color=FOREGROUND,
                             border=f"1px solid {SURFACE_BORDER}",
                             border_radius="7px",
@@ -1504,7 +1638,11 @@ def admin_team_page() -> rx.Component:
                                 on_click=AppState.close_admin_barber_form,
                             ),
                             _action(
-                                "Enviar para validação mock",
+                                rx.cond(
+                                    AppState.admin_barber_form_action == "create",
+                                    "Criar profissional",
+                                    "Salvar alterações",
+                                ),
                                 primary=True,
                                 on_click=AppState.submit_admin_barber_form,
                             ),
@@ -1551,7 +1689,7 @@ def admin_reports_page() -> rx.Component:
                     value=AppState.admin_report_period,
                     on_change=AppState.set_admin_report_period,
                     aria_label="Período do relatório",
-                    background_color="#111110",
+                    background_color=SURFACE,
                     color=FOREGROUND,
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="7px",
@@ -1562,7 +1700,7 @@ def admin_reports_page() -> rx.Component:
                     value=AppState.admin_report_date,
                     on_change=AppState.set_admin_report_date,
                     aria_label="Data do relatório",
-                    background_color="#111110",
+                    background_color=SURFACE,
                     color=FOREGROUND,
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="7px",
@@ -1624,7 +1762,7 @@ def admin_reports_page() -> rx.Component:
                                 ),
                             ),
                             rx.text(
-                                "Faturamento mensal",
+                                "Faturamento no período",
                                 color=FOREGROUND,
                                 font_size="0.68rem",
                                 font_weight="600",
@@ -1677,7 +1815,7 @@ def admin_reports_page() -> rx.Component:
                                         ),
                                         width="68px",
                                         height="68px",
-                                        background_color="#111110",
+                                        background_color=SURFACE,
                                         border_radius="50%",
                                         display="flex",
                                         align_items="center",
@@ -1728,38 +1866,15 @@ def admin_users_page() -> rx.Component:
         active_path="/admin/usuarios",
         content=rx.flex(
             rx.box(
-                rx.flex(
-                    rx.el.input(
-                        type="search",
-                        placeholder="Buscar por nome, e-mail ou função...",
-                        aria_label="Buscar usuários",
-                        background_color="#171715",
-                        color=FOREGROUND,
-                        border=f"1px solid {SURFACE_BORDER}",
-                        border_radius="7px",
-                        padding="8px 10px",
-                        width="100%",
-                    ),
-                    _action(
-                        "+ Novo Usuário",
-                        primary=True,
-                        on_click=AppState.perform_admin_mutation(
-                            "user",
-                            "create",
-                            {
-                                "name": "Novo usuário",
-                                "email": "novo@example.test",
-                                "role": "client",
-                            },
-                        ),
-                    ),
-                    align="center",
-                    justify="between",
-                    flex_wrap="wrap",
-                    gap="8px",
-                    width="100%",
+                rx.text(
+                    "Usuários administrativos e barbeiros são provisionados "
+                    "manualmente no Xano. Esta tela é somente para consulta.",
+                    color=MUTED,
+                    font_size="0.82rem",
+                    line_height="1.6",
+                    margin_bottom="14px",
                 ),
-                _table_row(("Nome", "E-mail", "Função", "Status", "Último Acesso", "Ações"), True),
+                _table_row(("Nome", "E-mail", "Função"), True),
                 rx.cond(
                     AppState.users.length() == 0,
                     rx.cond(
@@ -1769,7 +1884,7 @@ def admin_users_page() -> rx.Component:
                     ),
                     rx.foreach(AppState.users, _admin_user_row),
                 ),
-                background_color="#111110",
+                background_color=SURFACE,
                 border=f"1px solid {SURFACE_BORDER}",
                 border_radius="10px",
                 padding="12px",
@@ -1824,7 +1939,12 @@ def admin_settings_page() -> rx.Component:
                     rx.vstack(
                         rx.text("Segunda a sábado", color=FOREGROUND, font_size="0.78rem"),
                         rx.text("09:00 às 18:00", color=MUTED, font_size="0.7rem"),
-                        _action("Editar Horário"),
+                        rx.text(
+                            "Expediente global da unidade; não editável nesta tela.",
+                            color=MUTED,
+                            font_size="0.8rem",
+                            line_height="1.5",
+                        ),
                         align="start",
                         spacing="3",
                     ),
@@ -1837,7 +1957,12 @@ def admin_settings_page() -> rx.Component:
                     rx.vstack(
                         rx.text("America/Sao_Paulo", color=FOREGROUND, font_size="0.78rem"),
                         rx.text("Exibição local de todos os horários", color=MUTED, font_size="0.7rem"),
-                        _action("Editar Configurações"),
+                        rx.text(
+                            "Os horários são exibidos no fuso local da barbearia.",
+                            color=MUTED,
+                            font_size="0.8rem",
+                            line_height="1.5",
+                        ),
                         align="start",
                         spacing="3",
                     ),
@@ -1849,7 +1974,12 @@ def admin_settings_page() -> rx.Component:
                     "Política de Cancelamento",
                     rx.vstack(
                         rx.text("Cancelamento permitido até 12 horas antes", color=FOREGROUND, font_size="0.78rem"),
-                        _action("Editar Política"),
+                        rx.text(
+                            "Configuração somente para consulta.",
+                            color=MUTED,
+                            font_size="0.8rem",
+                            line_height="1.5",
+                        ),
                         align="start",
                         spacing="3",
                     ),

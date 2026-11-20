@@ -10,34 +10,25 @@ from app_barbearia.ui import (
     ACCENT,
     FOREGROUND,
     MUTED,
+    SUCCESS,
     SURFACE,
+    SURFACE_RAISED,
     SURFACE_BORDER,
     public_layout,
 )
 
 
 PORTAL_LINKS = [
-    ("Minha Conta", "/"),
-    ("Meus Agendamentos", "/agendamentos"),
-    ("Histórico", "/agendamentos#historico"),
-    ("Sair", "/login"),
-]
-CATALOG_LINKS = [
-    ("Serviços", "/servicos"),
-    ("Equipe", "/equipe"),
-    ("Agendamentos", "/agendamentos"),
-    ("Minha Conta", "/"),
-    ("Sair", "/login"),
-]
-APPOINTMENT_LINKS = PORTAL_LINKS
-BOOKING_LINKS = [
     ("Início", "/"),
+    ("Meus Agendamentos", "/agendamentos"),
     ("Serviços", "/servicos"),
-    ("Equipe", "/equipe"),
-    ("Agendamentos", "/agendar"),
-    ("Minha Conta", "/"),
+    ("Meu Perfil", "/perfil"),
+    ("Histórico", "/historico"),
     ("Sair", "/login"),
 ]
+CATALOG_LINKS = PORTAL_LINKS
+APPOINTMENT_LINKS = PORTAL_LINKS
+BOOKING_LINKS = PORTAL_LINKS
 
 
 def _page_header(eyebrow: str, title: str, description: str) -> rx.Component:
@@ -71,57 +62,100 @@ def _page_header(eyebrow: str, title: str, description: str) -> rx.Component:
 
 def _card(title: str, content: rx.Component) -> rx.Component:
     return rx.box(
-        rx.heading(title, as_="h2", size="3", color=FOREGROUND, margin_bottom="12px"),
+        rx.heading(title, as_="h2", size="4", color=FOREGROUND, margin_bottom="16px"),
         content,
-        background_color="#10100f",
+        background_color=SURFACE,
         border=f"1px solid {SURFACE_BORDER}",
-        border_radius="10px",
-        padding="12px",
+        border_radius="14px",
+        padding="20px",
         width="100%",
+        box_shadow="0 12px 32px #00000033",
+    )
+
+
+def _service_photo(service: ServiceRecord) -> rx.Component:
+    source = rx.cond(
+        service["icon_tag"] == "eye",
+        rx.asset("service_eyebrow.jpg"),
+        rx.cond(
+            service["title"] == "Barba",
+            rx.asset("service_beard.jpg"),
+            rx.cond(
+                service["title"] == "Combo",
+                rx.asset("service_combo.jpg"),
+                rx.asset("service_haircut.jpg"),
+            ),
+        ),
+    )
+    return rx.image(
+        src=source,
+        alt="Imagem ilustrativa do serviço",
+        object_fit="cover",
+        object_position="center",
+        width="100%",
+        height="100%",
+        loading="lazy",
+    )
+
+
+def _coming_soon_button(label: str) -> rx.Component:
+    return rx.button(
+        label,
+        rx.text(
+            "Em breve",
+            font_size="0.62rem",
+            font_weight="700",
+            white_space="nowrap",
+        ),
+        type="button",
+        disabled=True,
+        aria_label=f"{label}, Em breve",
+        color=MUTED,
+        background_color=SURFACE_RAISED,
+        border=f"1px solid {SURFACE_BORDER}",
+        border_radius="8px",
+        padding="8px 10px",
+        display="inline-flex",
+        align_items="center",
+        justify_content="center",
+        gap="7px",
+        opacity="0.8",
+        cursor="not-allowed",
     )
 
 
 def _service_card(service: ServiceRecord) -> rx.Component:
     return rx.vstack(
         rx.box(
-            rx.icon(
-                tag=service["icon_tag"],
-                size=34,
-                color=ACCENT,
-                aria_hidden=True,
-            ),
-            display="flex",
-            align_items="center",
-            justify_content="center",
-            height="92px",
+            _service_photo(service),
+            height="112px",
             width="100%",
-            background_image=(
-                "linear-gradient(135deg, #34281b 0%, #171512 50%, #3a2a19 100%)"
-            ),
-            border_radius="7px",
+            border_radius="10px",
+            overflow="hidden",
+            background_color=SURFACE_RAISED,
         ),
         rx.vstack(
             rx.heading(service["title"], as_="h3", size="3", color=FOREGROUND),
-            rx.text(service["price_display"], color=FOREGROUND, font_size="0.86rem"),
-            rx.flex(
-                rx.icon(tag="clock_3", size=14, color=MUTED, aria_hidden=True),
-                rx.text(
-                    service["duration_display"],
-                    color=MUTED,
-                    font_size="0.78rem",
-                ),
-                align="center",
-                gap="6px",
+            rx.text(
+                service["duration_display"],
+                color=MUTED,
+                font_size="0.78rem",
+            ),
+            rx.text(
+                service["price_display"],
+                color=ACCENT,
+                font_size="0.9rem",
+                font_weight="700",
             ),
             rx.button(
                 "Agendar",
                 type="button",
                 on_click=AppState.start_booking(service["id"]),
-                color="#17140f",
+                color="#090909",
                 background_color=ACCENT,
-                border_radius="6px",
-                padding="8px 12px",
-                font_size="0.75rem",
+                border_radius="9px",
+                padding="9px 12px",
+                font_size="0.78rem",
                 font_weight="700",
                 text_align="center",
                 width="100%",
@@ -135,14 +169,102 @@ def _service_card(service: ServiceRecord) -> rx.Component:
             width="100%",
             padding="8px 2px 2px",
         ),
-        background_color="#111110",
+        background_color=SURFACE_RAISED,
         border=f"1px solid {SURFACE_BORDER}",
-        border_radius="9px",
-        padding="8px",
+        border_radius="12px",
+        padding="14px",
         spacing="1",
         align="stretch",
-        flex="1 1 170px",
-        max_width="250px",
+        flex="1 1 220px",
+        max_width="320px",
+    )
+
+
+def _catalog_service_card(service: ServiceRecord) -> rx.Component:
+    return rx.vstack(
+        rx.flex(
+            rx.box(
+                _service_photo(service),
+                width="104px",
+                height="104px",
+                flex_shrink="0",
+                border_radius="10px",
+                overflow="hidden",
+            ),
+            rx.vstack(
+                rx.heading(
+                    service["title"],
+                    as_="h2",
+                    size="3",
+                    color=FOREGROUND,
+                ),
+                rx.text(
+                    service["description"],
+                    color=MUTED,
+                    font_size="0.8rem",
+                    line_height="1.5",
+                ),
+                align="start",
+                spacing="2",
+                flex="1",
+                min_width="0",
+            ),
+            align="start",
+            gap="14px",
+            width="100%",
+        ),
+        rx.flex(
+            rx.flex(
+                rx.icon(tag="clock_3", size=14, color=MUTED, aria_hidden=True),
+                rx.text(service["duration_display"], color=MUTED, font_size="0.76rem"),
+                rx.text("·", color=MUTED),
+                rx.text(
+                    service["price_display"],
+                    color=ACCENT,
+                    font_size="0.84rem",
+                    font_weight="700",
+                ),
+                align="center",
+                gap="6px",
+                flex_wrap="wrap",
+            ),
+            rx.button(
+                "Selecionar",
+                rx.icon(tag="chevron_right", size=14, aria_hidden=True),
+                type="button",
+                on_click=AppState.start_booking(service["id"]),
+                color=ACCENT,
+                background_color="transparent",
+                border=f"1px solid {ACCENT}",
+                border_radius="8px",
+                padding="8px 10px",
+                font_size="0.72rem",
+                font_weight="700",
+                display="inline-flex",
+                align_items="center",
+                gap="4px",
+                _focus={
+                    "outline": f"2px solid {FOREGROUND}",
+                    "outline_offset": "2px",
+                },
+            ),
+            align="center",
+            justify="between",
+            flex_wrap="wrap",
+            gap="10px",
+            width="100%",
+            border_top=f"1px solid {SURFACE_BORDER}",
+            padding_top="12px",
+        ),
+        align="stretch",
+        spacing="3",
+        background_color=SURFACE,
+        border=f"1px solid {SURFACE_BORDER}",
+        border_radius="12px",
+        padding="14px",
+        min_width="0",
+        width="100%",
+        _hover={"border_color": ACCENT},
     )
 
 
@@ -151,9 +273,9 @@ def _barber_card(barber: BarberRecord) -> rx.Component:
         rx.box(
             rx.icon(tag="user_round", size=30, color="#d2d0cb", aria_hidden=True),
             background_image=(
-                "linear-gradient(145deg, #4a3b2b 0%, #211d18 65%, #111110 100%)"
+                "linear-gradient(145deg, #30210a 0%, #211d18 65%, #121212 100%)"
             ),
-            border_radius="7px",
+            border_radius="10px",
             width="100%",
             height="118px",
             display="flex",
@@ -189,7 +311,7 @@ def _barber_card(barber: BarberRecord) -> rx.Component:
             "Agendar",
             type="button",
             on_click=AppState.start_barber_booking(barber["id"]),
-            color="#17140f",
+            color="#090909",
             background_color=ACCENT,
             border_radius="6px",
             padding="8px 12px",
@@ -204,12 +326,12 @@ def _barber_card(barber: BarberRecord) -> rx.Component:
         ),
         align="stretch",
         spacing="2",
-        background_color="#111110",
+        background_color=SURFACE_RAISED,
         border=f"1px solid {SURFACE_BORDER}",
-        border_radius="9px",
-        padding="8px",
-        flex="1 1 210px",
-        max_width="280px",
+        border_radius="12px",
+        padding="14px",
+        flex="1 1 240px",
+        max_width="340px",
     )
 
 
@@ -239,16 +361,11 @@ def _appointment_row(
     )
     return rx.flex(
         rx.box(
-            rx.icon(tag="user_round", size=34, color="#d2d0cb", aria_hidden=True),
-            background_image=(
-                "linear-gradient(145deg, #4a3b2b 0%, #211d18 65%, #111110 100%)"
-            ),
-            border_radius="7px",
-            width="90px",
-            height="72px",
-            display="flex",
-            align_items="center",
-            justify_content="center",
+            _appointment_photo(service),
+            border_radius="10px",
+            width="76px",
+            height="76px",
+            overflow="hidden",
             flex_shrink="0",
         ),
         rx.vstack(
@@ -273,21 +390,13 @@ def _appointment_row(
         rx.vstack(
             rx.text(
                 status,
-                color=status_color,
+                color=rx.cond(status == "Concluído", "#d9ffe7", status_color),
                 background_color=rx.cond(
-                    status == "Confirmado",
-                    "#17251c",
-                    "transparent",
+                    status == "Concluído",
+                    SUCCESS,
+                    SURFACE_RAISED,
                 ),
-                border=rx.cond(
-                    status == "Confirmado",
-                    "1px solid #54a86b",
-                    rx.cond(
-                        status == "Pendente",
-                        "1px solid #d6a64f",
-                        "1px solid #aaa69d",
-                    ),
-                ),
+                border=f"1px solid {SURFACE_BORDER}",
                 border_radius="999px",
                 padding="5px 10px",
                 font_size="0.67rem",
@@ -306,7 +415,7 @@ def _appointment_row(
         flex_wrap="wrap",
         gap="12px",
         width="100%",
-        padding="12px 0",
+        padding="16px 0",
         border_bottom=f"1px solid {SURFACE_BORDER}",
     )
 
@@ -320,6 +429,180 @@ def _appointment_item(item: AppointmentRecord) -> rx.Component:
         item["status_label"],
         item["status_color"],
         appointment_id=item["id"],
+    )
+
+
+def _appointment_photo(service_title: str | rx.Var[str]) -> rx.Component:
+    source = rx.cond(
+        service_title == "Barba",
+        rx.asset("service_beard.jpg"),
+        rx.cond(
+            service_title == "Combo",
+            rx.asset("service_combo.jpg"),
+            rx.asset("service_haircut.jpg"),
+        ),
+    )
+    return rx.image(
+        src=source,
+        alt="Imagem ilustrativa do serviço",
+        object_fit="cover",
+        object_position="center",
+        width="100%",
+        height="100%",
+        loading="lazy",
+    )
+
+
+def _featured_appointment(item: AppointmentRecord) -> rx.Component:
+    return rx.flex(
+        rx.box(
+            _appointment_photo(item["service_title"]),
+            width="112px",
+            height="112px",
+            flex_shrink="0",
+            border_radius="10px",
+            overflow="hidden",
+        ),
+        rx.vstack(
+            rx.flex(
+                rx.heading(
+                    item["service_title"],
+                    as_="h3",
+                    size="3",
+                    color=FOREGROUND,
+                ),
+                rx.text(
+                    item["status_label"],
+                    color=rx.cond(
+                        item["status"] == "confirmed",
+                        "#d9ffe7",
+                        FOREGROUND,
+                    ),
+                    background_color=rx.cond(
+                        item["status"] == "confirmed",
+                        SUCCESS,
+                        SURFACE_RAISED,
+                    ),
+                    border_radius="999px",
+                    padding="5px 10px",
+                    font_size="0.68rem",
+                    font_weight="700",
+                ),
+                align="center",
+                justify="between",
+                flex_wrap="wrap",
+                gap="8px",
+                width="100%",
+            ),
+            rx.text("Barbeiro: ", item["barber_name"], color=MUTED, font_size="0.8rem"),
+            rx.flex(
+                rx.icon(tag="calendar_days", size=14, color=ACCENT, aria_hidden=True),
+                rx.text(item["date_display"], color=FOREGROUND, font_size="0.78rem"),
+                rx.icon(tag="clock_3", size=14, color=ACCENT, aria_hidden=True),
+                rx.text(item["time"], color=FOREGROUND, font_size="0.78rem"),
+                align="center",
+                flex_wrap="wrap",
+                gap="7px",
+            ),
+            rx.text(
+                item["price_display"],
+                color=ACCENT,
+                font_size="0.92rem",
+                font_weight="700",
+            ),
+            align="stretch",
+            spacing="2",
+            flex="1",
+            min_width="0",
+        ),
+        rx.vstack(
+            _coming_soon_button("Remarcar"),
+            rx.cond(
+                (item["status"] == "confirmed") | (item["status"] == "pending"),
+                rx.button(
+                    "Cancelar Agendamento",
+                    type="button",
+                    on_click=AppState.cancel_client_appointment(item["id"]),
+                    color=ACCENT,
+                    background_color="transparent",
+                    border=f"1px solid {ACCENT}",
+                    border_radius="8px",
+                    padding="9px 12px",
+                    font_size="0.74rem",
+                    font_weight="700",
+                    width="100%",
+                    _focus={
+                        "outline": f"2px solid {FOREGROUND}",
+                        "outline_offset": "2px",
+                    },
+                ),
+                rx.fragment(),
+            ),
+            _coming_soon_button("Ver Detalhes"),
+            align="stretch",
+            justify="center",
+            width="100%",
+            max_width="220px",
+        ),
+        align="center",
+        flex_wrap="wrap",
+        gap="14px",
+        width="100%",
+        background_color=SURFACE_RAISED,
+        border=f"1px solid {SURFACE_BORDER}",
+        border_radius="12px",
+        padding="14px",
+    )
+
+
+def _mini_history_item(item: AppointmentRecord) -> rx.Component:
+    return rx.flex(
+        rx.box(
+            _appointment_photo(item["service_title"]),
+            width="54px",
+            height="54px",
+            flex_shrink="0",
+            border_radius="8px",
+            overflow="hidden",
+        ),
+        rx.vstack(
+            rx.text(
+                item["service_title"],
+                color=FOREGROUND,
+                font_size="0.78rem",
+                font_weight="600",
+            ),
+            rx.text(
+                item["date_display"],
+                " · ",
+                item["time"],
+                color=MUTED,
+                font_size="0.7rem",
+            ),
+            align="start",
+            spacing="1",
+            flex="1",
+            min_width="0",
+        ),
+        rx.text(
+            item["status_label"],
+            color=rx.cond(item["status"] == "completed", "#d9ffe7", FOREGROUND),
+            background_color=rx.cond(
+                item["status"] == "completed",
+                SUCCESS,
+                SURFACE_RAISED,
+            ),
+            border_radius="999px",
+            padding="4px 8px",
+            font_size="0.62rem",
+            font_weight="700",
+            white_space="nowrap",
+        ),
+        align="center",
+        gap="9px",
+        width="100%",
+        padding="9px 0",
+        border_bottom=f"1px solid {SURFACE_BORDER}",
     )
 
 
@@ -345,7 +628,8 @@ def _customer_page(
             width="100%",
             max_width=content_max_width,
             margin="0 auto",
-            padding="18px 20px 30px",
+            padding="24px",
+            class_name="px-4 md:px-8",
         ),
         links=links or PORTAL_LINKS,
         active_path=active_path,
@@ -354,20 +638,9 @@ def _customer_page(
 
 def customer_portal() -> rx.Component:
     return _customer_page(
-        content_max_width="960px",
+        content_max_width="1180px",
         content=rx.vstack(
             rx.flex(
-                rx.box(
-                    rx.icon(tag="user_round", size=28, color="#d2d0cb", aria_hidden=True),
-                    background_color="#596270",
-                    border_radius="50%",
-                    width="48px",
-                    height="48px",
-                    display="flex",
-                    align_items="center",
-                    justify_content="center",
-                    flex_shrink="0",
-                ),
                 rx.vstack(
                     rx.heading(
                         "Olá, ",
@@ -377,142 +650,264 @@ def customer_portal() -> rx.Component:
                         size="5",
                         color=FOREGROUND,
                     ),
-                    rx.text("Cliente desde 2026", color=MUTED, font_size="0.76rem"),
+                    rx.text(
+                        "Bem-vindo de volta ao BarberFlow.",
+                        color=MUTED,
+                        font_size="0.82rem",
+                    ),
                     align="start",
                     spacing="1",
                 ),
                 rx.link(
-                    rx.icon(tag="square_pen", size=14, aria_hidden=True),
-                    "Editar Perfil",
-                    href="/perfil",
-                    color=ACCENT,
-                    border=f"1px solid {ACCENT}",
-                    border_radius="7px",
-                    padding="8px 11px",
-                    font_size="0.73rem",
-                    font_weight="600",
+                    rx.icon(tag="calendar_plus", size=15, aria_hidden=True),
+                    "Agendar Agora",
+                    href="/agendar",
+                    color="#090909",
+                    background_color=ACCENT,
+                    border_radius="9px",
+                    padding="11px 16px",
+                    font_size="0.8rem",
+                    font_weight="700",
                     text_decoration="none",
                     display="flex",
                     align_items="center",
-                    gap="5px",
+                    gap="7px",
                     _focus={
                         "outline": f"2px solid {FOREGROUND}",
                         "outline_offset": "2px",
                     },
                 ),
                 align="center",
+                justify="between",
+                flex_wrap="wrap",
                 gap="12px",
                 width="100%",
-                padding="2px 2px 12px",
             ),
             rx.flex(
                 rx.box(
-                    rx.flex(
-                        rx.heading(
-                            "Meus Próximos Agendamentos",
-                            as_="h2",
-                            size="3",
-                            color=FOREGROUND,
-                        ),
-                        rx.link(
-                            "Ver todos →",
-                            href="/agendamentos",
-                            color=ACCENT,
-                            font_size="0.67rem",
-                            text_decoration="none",
-                        ),
-                        align="center",
-                        justify="between",
-                        gap="10px",
-                    ),
-                    rx.cond(
-                        AppState.next_appointments.length() == 0,
-                        rx.cond(
-                            AppState.is_loading,
-                            rx.text(
-                                "Carregando agendamentos...",
-                                color=MUTED,
-                                font_size="0.75rem",
+                    _card(
+                        "Seu próximo agendamento",
+                        rx.vstack(
+                            rx.flex(
+                                rx.link(
+                                    "Ver todos",
+                                    href="/agendamentos",
+                                    color=ACCENT,
+                                    font_weight="700",
+                                    text_decoration="none",
+                                ),
+                                align="center",
+                                justify="end",
+                                flex_wrap="wrap",
+                                gap="10px",
+                                width="100%",
                             ),
-                            rx.text(
-                                "Você ainda não tem próximos agendamentos.",
-                                color=MUTED,
-                                font_size="0.75rem",
+                            rx.cond(
+                                AppState.next_appointments.length() == 0,
+                                rx.cond(
+                                    AppState.is_loading,
+                                    rx.text(
+                                        "Carregando agendamentos...",
+                                        color=MUTED,
+                                        role="status",
+                                    ),
+                                    rx.text(
+                                        "Você ainda não tem próximos agendamentos.",
+                                        color=MUTED,
+                                    ),
+                                ),
+                                rx.foreach(
+                                    AppState.next_appointments,
+                                    _featured_appointment,
+                                ),
                             ),
-                        ),
-                        rx.foreach(
-                            AppState.next_appointments,
-                            _appointment_item,
+                            align="stretch",
+                            spacing="3",
                         ),
                     ),
-                    background_color="#10100f",
-                    border=f"1px solid {SURFACE_BORDER}",
-                    border_radius="10px",
-                    padding="12px",
-                    flex="2.4 1 430px",
+                    flex="1 1 480px",
                     min_width="0",
                 ),
                 rx.box(
-                    rx.heading(
-                        "Seu Histórico",
-                        as_="h2",
-                        size="3",
-                        color=FOREGROUND,
-                        margin_bottom="16px",
-                    ),
-                    rx.text("Total de atendimentos", color=MUTED, font_size="0.73rem"),
-                    rx.flex(
-                        rx.text(
-                            "12",
+                    rx.vstack(
+                        rx.icon(
+                            tag="calendar_plus",
+                            size=38,
+                            color=ACCENT,
+                            aria_hidden=True,
+                        ),
+                        rx.heading(
+                            "Agende seu próximo horário",
+                            as_="h2",
+                            size="4",
                             color=FOREGROUND,
-                            font_size="1.8rem",
+                            max_width="280px",
+                        ),
+                        rx.text(
+                            "Escolha o serviço, o barbeiro e o melhor horário para você.",
+                            color=MUTED,
+                            font_size="0.82rem",
+                            max_width="300px",
+                        ),
+                        rx.link(
+                            "Agendar Agora",
+                            href="/agendar",
+                            color="#090909",
+                            background_color=ACCENT,
+                            border_radius="9px",
+                            padding="11px 16px",
+                            font_size="0.78rem",
                             font_weight="700",
+                            text_decoration="none",
+                            _focus={
+                                "outline": f"2px solid {FOREGROUND}",
+                                "outline_offset": "2px",
+                            },
                         ),
-                        rx.flex(
-                            *[
-                                rx.box(
-                                    width="7px",
-                                    height=height,
-                                    background_color=ACCENT,
-                                    border_radius="2px 2px 0 0",
-                                )
-                                for height in ("17px", "24px", "30px", "21px", "36px")
-                            ],
-                            align="end",
-                            gap="3px",
-                            height="40px",
-                            padding_bottom="2px",
-                        ),
-                        align="end",
-                        justify="between",
+                        align="start",
+                        spacing="3",
+                        justify="center",
                         width="100%",
+                        min_height="260px",
+                        background_image=(
+                            f"linear-gradient(90deg, #090909f2 0%, #090909cc 58%, #09090966 100%), "
+                            f"url('{rx.asset('barbershop_chair.jpg')}')"
+                        ),
+                        background_size="cover",
+                        background_position="center",
+                        border=f"1px solid {SURFACE_BORDER}",
+                        border_radius="14px",
+                        padding="24px",
+                        box_shadow="0 12px 32px #00000055",
                     ),
-                    background_color="#10100f",
-                    border=f"1px solid {SURFACE_BORDER}",
-                    border_radius="10px",
-                    padding="14px",
-                    flex="1 1 180px",
-                    max_width="280px",
+                    flex="1 1 420px",
                     min_width="0",
                 ),
                 align="start",
                 flex_wrap="wrap",
-                gap="12px",
+                gap="18px",
+                width="100%",
+            ),
+            rx.flex(
+                rx.box(
+                    _card(
+                        "Nossos Serviços",
+                        rx.vstack(
+                            rx.flex(
+                                rx.text(
+                                    "Escolha seu próximo atendimento.",
+                                    color=MUTED,
+                                    font_size="0.8rem",
+                                ),
+                                rx.link(
+                                    "Ver todos",
+                                    href="/servicos",
+                                    color=ACCENT,
+                                    font_weight="700",
+                                    text_decoration="none",
+                                ),
+                                align="center",
+                                justify="between",
+                                gap="10px",
+                                width="100%",
+                            ),
+                            rx.cond(
+                                AppState.services.length() == 0,
+                                rx.cond(
+                                    AppState.is_loading,
+                                    rx.text("Carregando serviços...", color=MUTED),
+                                    rx.text(
+                                        "Nenhum serviço disponível no momento.",
+                                        color=MUTED,
+                                    ),
+                                ),
+                                rx.grid(
+                                    rx.foreach(
+                                        AppState.services[:4],
+                                        _service_card,
+                                    ),
+                                    gap="12px",
+                                    width="100%",
+                                    class_name="grid grid-cols-2 xl:grid-cols-4",
+                                ),
+                            ),
+                            align="stretch",
+                            spacing="3",
+                        ),
+                    ),
+                    flex="2 1 620px",
+                    min_width="0",
+                ),
+                rx.box(
+                    _card(
+                        "Meu Histórico",
+                        rx.vstack(
+                            rx.flex(
+                                rx.text(
+                                    "Atendimentos anteriores",
+                                    color=MUTED,
+                                    font_size="0.8rem",
+                                ),
+                                rx.link(
+                                    "Ver todos",
+                                    href="/historico",
+                                    color=ACCENT,
+                                    font_weight="700",
+                                    text_decoration="none",
+                                ),
+                                align="center",
+                                justify="between",
+                                gap="8px",
+                                width="100%",
+                            ),
+                            rx.cond(
+                                AppState.historical_appointments.length() == 0,
+                                rx.cond(
+                                    AppState.is_loading,
+                                    rx.text(
+                                        "Carregando histórico...",
+                                        color=MUTED,
+                                        role="status",
+                                    ),
+                                    rx.text(
+                                        "Nenhum atendimento no histórico.",
+                                        color=MUTED,
+                                    ),
+                                ),
+                                rx.vstack(
+                                    rx.foreach(
+                                        AppState.historical_appointments[:3],
+                                        _mini_history_item,
+                                    ),
+                                    align="stretch",
+                                    spacing="0",
+                                ),
+                            ),
+                            align="stretch",
+                            spacing="3",
+                        ),
+                    ),
+                    flex="1 1 340px",
+                    min_width="0",
+                ),
+                align="start",
+                flex_wrap="wrap",
+                gap="18px",
                 width="100%",
             ),
             rx.flex(
                 rx.icon(tag="crown", size=26, color=ACCENT, aria_hidden=True),
                 rx.vstack(
                     rx.text(
-                        "Obrigado por escolher a BarberFlow!",
+                        "Cuide do seu estilo!",
                         color=FOREGROUND,
-                        font_size="0.84rem",
+                        font_size="1.05rem",
                         font_weight="700",
                     ),
                     rx.text(
-                        "Cuide do seu estilo, sempre.",
+                        "Uma barbearia completa, sempre ao seu lado.",
                         color=MUTED,
-                        font_size="0.73rem",
+                        font_size="0.82rem",
                     ),
                     align="start",
                     spacing="1",
@@ -520,12 +915,17 @@ def customer_portal() -> rx.Component:
                 align="center",
                 gap="14px",
                 width="100%",
+                min_height="112px",
                 background_image=(
-                    "linear-gradient(110deg, #12110f, #19150f 72%, #4c3618)"
+                    f"linear-gradient(90deg, #090909f0 0%, #090909cc 55%, #09090966 100%), "
+                    f"url('{rx.asset('barbershop_tools.jpg')}')"
                 ),
+                background_size="cover",
+                background_position="center",
                 border=f"1px solid {SURFACE_BORDER}",
-                border_radius="10px",
-                padding="16px 20px",
+                border_radius="14px",
+                padding="18px 22px",
+                overflow="hidden",
             ),
             align="stretch",
             spacing="4",
@@ -539,12 +939,44 @@ def services_page() -> rx.Component:
         active_path="/servicos",
         links=CATALOG_LINKS,
         content=rx.vstack(
+            rx.box(
+                rx.vstack(
+                    rx.heading(
+                        "Serviços de qualidade para um visual ainda melhor.",
+                        as_="h1",
+                        size="6",
+                        color=FOREGROUND,
+                        max_width="600px",
+                    ),
+                    rx.text(
+                        "Corte, barba e muito mais, com os melhores serviços.",
+                        color=MUTED,
+                        font_size="0.9rem",
+                    ),
+                    align="start",
+                    spacing="3",
+                    max_width="620px",
+                    justify="center",
+                    min_height="190px",
+                ),
+                background_image=(
+                    f"linear-gradient(90deg, #090909f5 0%, #090909d9 48%, #09090955 100%), "
+                    f"url('{rx.asset('barbershop_tools.jpg')}')"
+                ),
+                background_size="cover",
+                background_position="center",
+                border=f"1px solid {ACCENT}",
+                border_radius="14px",
+                padding="24px",
+                width="100%",
+                box_shadow="0 12px 32px #00000055",
+            ),
             rx.flex(
                 rx.flex(
                     rx.link(
                         "Serviços",
                         href="/servicos",
-                        color="#17140f",
+                        color="#090909",
                         background_color=ACCENT,
                         border_radius="7px",
                         padding="8px 15px",
@@ -561,7 +993,7 @@ def services_page() -> rx.Component:
                         "Barbeiros",
                         href="/equipe",
                         color=FOREGROUND,
-                        background_color="#171715",
+                        background_color=SURFACE_RAISED,
                         border=f"1px solid {SURFACE_BORDER}",
                         border_radius="7px",
                         padding="8px 15px",
@@ -574,7 +1006,7 @@ def services_page() -> rx.Component:
                     ),
                     align="center",
                     gap="4px",
-                    background_color="#171715",
+                    background_color=SURFACE_RAISED,
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="9px",
                     padding="4px",
@@ -585,7 +1017,7 @@ def services_page() -> rx.Component:
                     aria_label="Buscar serviço",
                     value=AppState.service_search,
                     on_change=AppState.set_service_search,
-                    background_color="#111110",
+                    background_color=SURFACE_RAISED,
                     color=FOREGROUND,
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="8px",
@@ -593,6 +1025,10 @@ def services_page() -> rx.Component:
                     font_size="0.77rem",
                     width="200px",
                     max_width="100%",
+                    _focus={
+                        "outline": f"2px solid {ACCENT}",
+                        "outline_offset": "2px",
+                    },
                 ),
                 justify="between",
                 align="center",
@@ -600,18 +1036,7 @@ def services_page() -> rx.Component:
                 gap="12px",
                 width="100%",
             ),
-            rx.vstack(
-                rx.heading("Nossos Serviços", as_="h1", size="4", color=FOREGROUND),
-                rx.text(
-                    "Qualidade e estilo em cada detalhe.",
-                    color=MUTED,
-                    font_size="0.75rem",
-                ),
-                align="start",
-                spacing="1",
-                width="100%",
-            ),
-            rx.flex(
+            rx.grid(
                 rx.cond(
                     AppState.filtered_services.length() == 0,
                     rx.cond(
@@ -622,14 +1047,68 @@ def services_page() -> rx.Component:
                             color=MUTED,
                         ),
                     ),
-                    rx.foreach(AppState.filtered_services, _service_card),
+                    rx.foreach(AppState.filtered_services, _catalog_service_card),
                 ),
-                flex_wrap="wrap",
-                gap="10px",
+                gap="16px",
                 width="100%",
+                class_name="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3",
+            ),
+            rx.flex(
+                rx.vstack(
+                    rx.heading(
+                        "Por que escolher o BarberFlow?",
+                        as_="h2",
+                        size="4",
+                        color=FOREGROUND,
+                    ),
+                    rx.text(
+                        "Qualidade, conforto e um atendimento feito para você.",
+                        color=MUTED,
+                        font_size="0.76rem",
+                    ),
+                    align="start",
+                    spacing="1",
+                    flex="1",
+                ),
+                *[
+                    rx.vstack(
+                        rx.icon(tag=icon, size=23, color=ACCENT, aria_hidden=True),
+                        rx.text(
+                            label,
+                            color=FOREGROUND,
+                            font_size="0.7rem",
+                            font_weight="600",
+                            text_align="center",
+                        ),
+                        align="center",
+                        justify="center",
+                        spacing="2",
+                        flex="1 1 130px",
+                        padding="8px",
+                        border_left=f"1px solid {SURFACE_BORDER}",
+                    )
+                    for icon, label in [
+                        ("scissors", "Barbeiros Especializados"),
+                        ("shield_check", "Ambiente Seguro"),
+                        ("zap", "Agendamento Rápido"),
+                    ]
+                ],
+                align="center",
+                flex_wrap="wrap",
+                gap="12px",
+                width="100%",
+                background_image=(
+                    f"linear-gradient(90deg, #090909eb 0%, #090909cc 100%), "
+                    f"url('{rx.asset('barbershop_tools.jpg')}')"
+                ),
+                background_size="cover",
+                background_position="center",
+                border=f"1px solid {SURFACE_BORDER}",
+                border_radius="12px",
+                padding="18px",
             ),
             align="stretch",
-            spacing="4",
+            spacing="5",
             width="100%",
         ),
     )
@@ -645,7 +1124,7 @@ def team_page() -> rx.Component:
                     "Serviços",
                     href="/servicos",
                     color=FOREGROUND,
-                    background_color="#171715",
+                    background_color=SURFACE_RAISED,
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="7px",
                     padding="8px 15px",
@@ -659,7 +1138,7 @@ def team_page() -> rx.Component:
                 rx.link(
                     "Barbeiros",
                     href="/equipe",
-                    color="#17140f",
+                    color="#090909",
                     background_color=ACCENT,
                     border_radius="7px",
                     padding="8px 15px",
@@ -674,7 +1153,7 @@ def team_page() -> rx.Component:
                 ),
                 align="center",
                 gap="4px",
-                background_color="#171715",
+                background_color=SURFACE_RAISED,
                 border=f"1px solid {SURFACE_BORDER}",
                 border_radius="9px",
                 padding="4px",
@@ -711,96 +1190,469 @@ def team_page() -> rx.Component:
     )
 
 
+def _history_appointment_card(item: AppointmentRecord) -> rx.Component:
+    return rx.flex(
+        rx.box(
+            _appointment_photo(item["service_title"]),
+            width="96px",
+            height="96px",
+            flex_shrink="0",
+            border_radius="10px",
+            overflow="hidden",
+        ),
+        rx.vstack(
+            rx.heading(
+                item["service_title"],
+                as_="h3",
+                size="3",
+                color=FOREGROUND,
+            ),
+            rx.text("Barbeiro: ", item["barber_name"], color=MUTED, font_size="0.76rem"),
+            rx.text(
+                item["date_display"],
+                " · ",
+                item["time"],
+                color=MUTED,
+                font_size="0.76rem",
+            ),
+            align="start",
+            spacing="1",
+            flex="1",
+            min_width="0",
+        ),
+        rx.vstack(
+            rx.text(
+                item["status_label"],
+                color=rx.cond(item["status"] == "completed", "#d9ffe7", FOREGROUND),
+                background_color=rx.cond(
+                    item["status"] == "completed",
+                    SUCCESS,
+                    SURFACE_RAISED,
+                ),
+                border_radius="999px",
+                padding="5px 10px",
+                font_size="0.68rem",
+                font_weight="700",
+                white_space="nowrap",
+            ),
+            rx.text(
+                item["price_display"],
+                color=ACCENT,
+                font_size="0.92rem",
+                font_weight="700",
+            ),
+            _coming_soon_button("Detalhes"),
+            align="end",
+            spacing="2",
+        ),
+        align="center",
+        flex_wrap="wrap",
+        gap="14px",
+        width="100%",
+        background_color=SURFACE_RAISED,
+        border=f"1px solid {SURFACE_BORDER}",
+        border_radius="12px",
+        padding="14px",
+    )
+
+
+def _brl_total(cents: rx.Var[int]) -> rx.Var[str]:
+    remainder = cents % 100
+    formatted_cents = rx.cond(
+        remainder < 10,
+        "0" + remainder.to_string(),
+        remainder.to_string(),
+    )
+    return "R$ " + (cents // 100).to_string() + "," + formatted_cents
+
+
 def appointments_page() -> rx.Component:
-    upcoming_card = _card(
-        "Próximos Agendamentos",
-        rx.cond(
-            AppState.upcoming_appointments.length() == 0,
+    upcoming_content = rx.vstack(
+        _card(
+            "Próximo Agendamento",
             rx.cond(
-                AppState.is_loading,
-                rx.text("Carregando agendamentos...", color=MUTED),
+                AppState.upcoming_appointments.length() == 0,
+                rx.cond(
+                    AppState.is_loading,
+                    rx.text("Carregando agendamentos...", color=MUTED, role="status"),
+                    rx.vstack(
+                        rx.text(
+                            "Você ainda não tem próximos agendamentos.",
+                            color=MUTED,
+                        ),
+                        rx.link(
+                            "Agendar um horário",
+                            href="/agendar",
+                            color=ACCENT,
+                            text_decoration="none",
+                        ),
+                        align="start",
+                        spacing="2",
+                    ),
+                ),
                 rx.vstack(
-                    rx.text(
-                        "Você ainda não tem próximos agendamentos.",
-                        color=MUTED,
-                        font_size="0.75rem",
-                    ),
-                    rx.link(
-                        "Agendar um horário",
-                        href="/agendar",
-                        color=ACCENT,
-                        font_size="0.75rem",
-                    ),
-                    align="start",
-                    spacing="2",
+                    rx.foreach(AppState.next_appointments, _featured_appointment),
+                    align="stretch",
+                    spacing="3",
                 ),
             ),
-            rx.vstack(
-                rx.foreach(AppState.upcoming_appointments, _appointment_item),
-                align="stretch",
-                spacing="0",
-            ),
         ),
-    )
-    history_card = rx.box(
         _card(
-            "Histórico",
+            "Agendamentos Anteriores",
             rx.cond(
                 AppState.historical_appointments.length() == 0,
                 rx.cond(
                     AppState.is_loading,
-                    rx.text("Carregando histórico...", color=MUTED),
-                    rx.text(
-                        "Nenhum atendimento no histórico.",
-                        color=MUTED,
-                        font_size="0.75rem",
-                    ),
+                    rx.text("Carregando histórico...", color=MUTED, role="status"),
+                    rx.text("Nenhum atendimento anterior.", color=MUTED),
                 ),
                 rx.vstack(
-                    rx.foreach(AppState.historical_appointments, _appointment_item),
+                    rx.foreach(AppState.historical_appointments, _mini_history_item),
                     align="stretch",
                     spacing="0",
                 ),
             ),
         ),
-        id="historico",
+        align="stretch",
+        spacing="4",
         width="100%",
+    )
+    history_content = _card(
+        "Histórico",
+        rx.cond(
+            AppState.historical_appointments.length() == 0,
+            rx.cond(
+                AppState.is_loading,
+                rx.text("Carregando histórico...", color=MUTED, role="status"),
+                rx.text("Nenhum atendimento no histórico.", color=MUTED),
+            ),
+            rx.vstack(
+                rx.foreach(
+                    AppState.historical_appointments,
+                    _history_appointment_card,
+                ),
+                align="stretch",
+                spacing="3",
+            ),
+        ),
     )
     return _customer_page(
         active_path="/agendamentos",
         links=APPOINTMENT_LINKS,
         content=rx.vstack(
-            rx.heading("Meus Agendamentos", as_="h1", size="5", color=FOREGROUND),
+            _page_header(
+                "Área do cliente",
+                "Meus Agendamentos",
+                "Confira seus próximos horários e atendimentos anteriores.",
+            ),
             rx.flex(
-                rx.button(
-                    "Todos",
-                    on_click=AppState.set_appointment_filter("all"),
-                    type="button",
-                    aria_pressed=AppState.appointment_filter == "all",
+                rx.flex(
+                    rx.button(
+                        "Próximos Agendamentos",
+                        on_click=AppState.set_appointment_filter("upcoming"),
+                        type="button",
+                        aria_pressed=AppState.appointment_filter != "history",
+                        color=rx.cond(
+                            AppState.appointment_filter != "history",
+                            "#090909",
+                            FOREGROUND,
+                        ),
+                        font_weight="700",
+                        background_color=rx.cond(
+                            AppState.appointment_filter != "history",
+                            ACCENT,
+                            SURFACE_RAISED,
+                        ),
+                        border=f"1px solid {SURFACE_BORDER}",
+                        border_radius="9px",
+                        padding="10px 14px",
+                        _focus={
+                            "outline": f"2px solid {ACCENT}",
+                            "outline_offset": "2px",
+                        },
+                    ),
+                    rx.button(
+                        "Histórico",
+                        on_click=AppState.set_appointment_filter("history"),
+                        type="button",
+                        aria_pressed=AppState.appointment_filter == "history",
+                        color=rx.cond(
+                            AppState.appointment_filter == "history",
+                            "#090909",
+                            FOREGROUND,
+                        ),
+                        font_weight="700",
+                        background_color=rx.cond(
+                            AppState.appointment_filter == "history",
+                            ACCENT,
+                            SURFACE_RAISED,
+                        ),
+                        border=f"1px solid {SURFACE_BORDER}",
+                        border_radius="9px",
+                        padding="10px 14px",
+                        _focus={
+                            "outline": f"2px solid {ACCENT}",
+                            "outline_offset": "2px",
+                        },
+                    ),
+                    align="center",
+                    flex_wrap="wrap",
+                    gap="8px",
                 ),
-                rx.button(
-                    "Próximos",
-                    on_click=AppState.set_appointment_filter("upcoming"),
-                    type="button",
-                    aria_pressed=AppState.appointment_filter == "upcoming",
-                ),
-                rx.button(
-                    "Histórico",
-                    on_click=AppState.set_appointment_filter("history"),
-                    type="button",
-                    aria_pressed=AppState.appointment_filter == "history",
-                ),
+                _coming_soon_button("Período"),
                 align="center",
+                justify="between",
                 flex_wrap="wrap",
-                gap="8px",
+                gap="12px",
+                width="100%",
+            ),
+            rx.flex(
+                rx.box(
+                    rx.cond(
+                        AppState.appointment_filter == "history",
+                        history_content,
+                        upcoming_content,
+                    ),
+                    flex="1 1 620px",
+                    min_width="0",
+                ),
+                rx.vstack(
+                    _card(
+                        "Resumo dos Agendamentos",
+                        rx.vstack(
+                            rx.flex(
+                                rx.icon(
+                                    tag="calendar_days",
+                                    size=25,
+                                    color=ACCENT,
+                                    aria_hidden=True,
+                                ),
+                                rx.vstack(
+                                    rx.text(
+                                        AppState.upcoming_appointments.length(),
+                                        color=FOREGROUND,
+                                        font_size="1.4rem",
+                                        font_weight="700",
+                                    ),
+                                    rx.text(
+                                        "Próximos agendamentos",
+                                        color=MUTED,
+                                        font_size="0.74rem",
+                                    ),
+                                    align="start",
+                                    spacing="0",
+                                ),
+                                align="center",
+                                gap="12px",
+                                width="100%",
+                                border_bottom=f"1px solid {SURFACE_BORDER}",
+                                padding_bottom="12px",
+                            ),
+                            rx.flex(
+                                rx.icon(
+                                    tag="history",
+                                    size=25,
+                                    color=ACCENT,
+                                    aria_hidden=True,
+                                ),
+                                rx.vstack(
+                                    rx.text(
+                                        AppState.customer_appointments.length(),
+                                        color=FOREGROUND,
+                                        font_size="1.4rem",
+                                        font_weight="700",
+                                    ),
+                                    rx.text(
+                                        "Registros no total",
+                                        color=MUTED,
+                                        font_size="0.74rem",
+                                    ),
+                                    align="start",
+                                    spacing="0",
+                                ),
+                                align="center",
+                                gap="12px",
+                                width="100%",
+                            ),
+                            align="stretch",
+                            spacing="3",
+                        ),
+                    ),
+                    _card(
+                        "Ações Rápidas",
+                        rx.vstack(
+                            rx.link(
+                                "Agendar Novo",
+                                href="/agendar",
+                                color="#090909",
+                                background_color=ACCENT,
+                                border_radius="8px",
+                                padding="10px 12px",
+                                font_size="0.76rem",
+                                font_weight="700",
+                                text_decoration="none",
+                                text_align="center",
+                                width="100%",
+                            ),
+                            rx.link(
+                                "Ver Serviços",
+                                href="/servicos",
+                                color=ACCENT,
+                                background_color="transparent",
+                                border=f"1px solid {ACCENT}",
+                                border_radius="8px",
+                                padding="10px 12px",
+                                font_size="0.76rem",
+                                font_weight="700",
+                                text_decoration="none",
+                                text_align="center",
+                                width="100%",
+                            ),
+                            align="stretch",
+                            spacing="2",
+                        ),
+                    ),
+                    flex="0 1 280px",
+                    width="100%",
+                    min_width="0",
+                ),
+                align="start",
+                flex_wrap="wrap",
+                gap="18px",
+                width="100%",
+            ),
+            align="stretch",
+            spacing="4",
+            width="100%",
+        ),
+    )
+
+
+def history_page() -> rx.Component:
+    completed_appointments = AppState.historical_appointments.filter(
+        lambda item: item["status"] == "completed"
+    )
+    total_spent_cents = completed_appointments.reduce(
+        lambda total, item: total + item["price_cents"],
+        0,
+    )
+    return _customer_page(
+        active_path="/historico",
+        links=PORTAL_LINKS,
+        content=rx.vstack(
+            _page_header(
+                "Área do cliente",
+                "Meu Histórico",
+                "Confira o histórico dos seus atendimentos.",
+            ),
+            rx.flex(
+                rx.flex(
+                    rx.button(
+                        "Todos",
+                        type="button",
+                        disabled=True,
+                        aria_pressed=True,
+                        color="#090909",
+                        background_color=ACCENT,
+                        border=f"1px solid {ACCENT}",
+                        border_radius="999px",
+                        padding="9px 16px",
+                        font_weight="700",
+                    ),
+                    *[
+                        _coming_soon_button(label)
+                        for label in ("Cortes", "Barba", "Combos")
+                    ],
+                    align="center",
+                    flex_wrap="wrap",
+                    gap="8px",
+                ),
+                _coming_soon_button("Período"),
+                align="center",
+                justify="between",
+                flex_wrap="wrap",
+                gap="12px",
+                width="100%",
             ),
             rx.cond(
-                AppState.appointment_filter == "all",
-                rx.vstack(upcoming_card, history_card, align="stretch", spacing="4"),
+                AppState.historical_appointments.length() == 0,
                 rx.cond(
-                    AppState.appointment_filter == "upcoming",
-                    upcoming_card,
-                    history_card,
+                    AppState.is_loading,
+                    _card(
+                        "Histórico",
+                        rx.text(
+                            "Carregando histórico...",
+                            color=MUTED,
+                            role="status",
+                        ),
+                    ),
+                    _card(
+                        "Histórico",
+                        rx.vstack(
+                            rx.text(
+                                "Você ainda não tem atendimentos no histórico.",
+                                color=MUTED,
+                            ),
+                            rx.link(
+                                "Ver serviços",
+                                href="/servicos",
+                                color=ACCENT,
+                                text_decoration="none",
+                            ),
+                            align="start",
+                            spacing="2",
+                        ),
+                    ),
+                ),
+                rx.vstack(
+                    rx.foreach(
+                        AppState.historical_appointments,
+                        _history_appointment_card,
+                    ),
+                    align="stretch",
+                    spacing="3",
+                    width="100%",
+                ),
+            ),
+            _card(
+                "Resumo do Histórico",
+                rx.flex(
+                    rx.vstack(
+                        rx.text(
+                            "Total gasto com serviços",
+                            color=FOREGROUND,
+                            font_size="0.8rem",
+                            font_weight="600",
+                        ),
+                        rx.text(
+                            _brl_total(total_spent_cents),
+                            color=ACCENT,
+                            font_size="1.2rem",
+                            font_weight="700",
+                        ),
+                        align="start",
+                        spacing="1",
+                    ),
+                    rx.vstack(
+                        rx.text(
+                            "Total de atendimentos",
+                            color=MUTED,
+                            font_size="0.8rem",
+                        ),
+                        rx.text(
+                            completed_appointments.length(),
+                            color=FOREGROUND,
+                            font_size="1.4rem",
+                            font_weight="700",
+                        ),
+                        align="start",
+                        spacing="1",
+                    ),
+                    align="center",
+                    justify="between",
+                    flex_wrap="wrap",
+                    gap="20px",
+                    width="100%",
                 ),
             ),
             align="stretch",
@@ -815,7 +1667,7 @@ def _booking_step(number: str, label: str, active: bool = False) -> rx.Component
         rx.box(
             rx.text(
                 number,
-                color="#17140f" if active else MUTED,
+                color="#090909" if active else MUTED,
                 font_size="0.74rem",
                 font_weight="700",
             ),
@@ -863,11 +1715,29 @@ def _booking_option(
         ),
         rx.flex(
             rx.vstack(
-                rx.text(title, color=FOREGROUND, font_size="0.78rem", font_weight="600"),
-                rx.text(description, color=MUTED, font_size="0.66rem"),
+                rx.text(
+                    title,
+                    color=FOREGROUND,
+                    font_size="0.8rem",
+                    font_weight="600",
+                    line_height="1.35",
+                    width="100%",
+                    text_align="left",
+                    overflow_wrap="anywhere",
+                ),
+                rx.text(
+                    description,
+                    color=MUTED,
+                    font_size="0.7rem",
+                    line_height="1.45",
+                    width="100%",
+                    text_align="left",
+                    overflow_wrap="anywhere",
+                ),
                 align="start",
-                spacing="1",
+                spacing="2",
                 flex="1",
+                min_width="0",
             ),
             rx.icon(
                 tag=rx.cond(selected, "circle_check", "circle"),
@@ -875,26 +1745,27 @@ def _booking_option(
                 color=rx.cond(selected, ACCENT, MUTED),
                 aria_hidden=True,
             ),
-            align="center",
+            align="start",
             justify="between",
-            gap="8px",
+            gap="10px",
             width="100%",
         ),
         type="button",
         aria_pressed=selected,
         on_click=on_click,
-        background_color=rx.cond(selected, "#211e18", "#111110"),
+        background_color=rx.cond(selected, "#30210a", SURFACE_RAISED),
         border=rx.cond(
             selected,
             f"1px solid {ACCENT}",
             f"1px solid {SURFACE_BORDER}",
         ),
-        border_radius="8px",
-        padding="8px",
+        border_radius="10px",
+        padding="12px 10px",
         width="100%",
+        min_height="78px",
         display="flex",
-        align_items="center",
-        gap="8px",
+        align_items="flex-start",
+        gap="10px",
         text_align="left",
         cursor="pointer",
         _focus={
@@ -926,16 +1797,16 @@ def _booking_barber_option(barber: BarberRecord) -> rx.Component:
 def _booking_calendar_cell(day: str) -> rx.Component:
     return rx.cond(
         day == "",
-        rx.box(width="24px", height="24px"),
+        rx.box(width="30px", height="30px"),
         rx.button(
             rx.text(
                 day,
                 color=rx.cond(
                     AppState.selected_day == day,
-                    "#17140f",
+                    "#090909",
                     FOREGROUND,
                 ),
-                font_size="0.66rem",
+                font_size="0.76rem",
                 font_weight=rx.cond(
                     AppState.selected_day == day,
                     "700",
@@ -954,9 +1825,9 @@ def _booking_calendar_cell(day: str) -> rx.Component:
                 "transparent",
             ),
             border="0",
-            border_radius="5px",
-            width="24px",
-            height="24px",
+            border_radius="8px",
+            width="30px",
+            height="30px",
             display="flex",
             align_items="center",
             justify_content="center",
@@ -974,14 +1845,14 @@ def _booking_time_option(time_value: str) -> rx.Component:
     return rx.button(
         rx.text(
             time_value,
-            color=rx.cond(selected, "#17140f", FOREGROUND),
+            color=rx.cond(selected, "#090909", FOREGROUND),
             font_size="0.68rem",
             font_weight=rx.cond(selected, "700", "400"),
         ),
         type="button",
         aria_pressed=selected,
         on_click=AppState.select_booking_time(time_value),
-        background_color=rx.cond(selected, ACCENT, "#111110"),
+        background_color=rx.cond(selected, ACCENT, SURFACE_RAISED),
         border=rx.cond(
             selected,
             f"1px solid {ACCENT}",
@@ -1001,7 +1872,7 @@ def _booking_time_option(time_value: str) -> rx.Component:
 
 def booking_page() -> rx.Component:
     return _customer_page(
-        active_path="/agendar",
+        active_path="/agendamentos",
         links=BOOKING_LINKS,
         content=rx.vstack(
             rx.flex(
@@ -1081,8 +1952,8 @@ def booking_page() -> rx.Component:
                             spacing="2",
                         ),
                     ),
-                    flex="1 1 190px",
-                    min_width="190px",
+                    flex="1 1 250px",
+                    min_width="230px",
                 ),
                 rx.box(
                     _card(
@@ -1107,8 +1978,8 @@ def booking_page() -> rx.Component:
                             spacing="2",
                         ),
                     ),
-                    flex="1 1 190px",
-                    min_width="190px",
+                    flex="1 1 250px",
+                    min_width="230px",
                 ),
                 rx.box(
                     _card(
@@ -1157,14 +2028,14 @@ def booking_page() -> rx.Component:
                                     rx.text(
                                         day,
                                         color=MUTED,
-                                        font_size="0.58rem",
+                                        font_size="0.68rem",
                                         text_align="center",
                                     )
                                     for day in ("Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom")
                                 ],
                                 columns="7",
                                 width="100%",
-                                gap="5px",
+                                gap="2px",
                             ),
                             rx.grid(
                                 rx.foreach(
@@ -1173,15 +2044,15 @@ def booking_page() -> rx.Component:
                                 ),
                                 columns="7",
                                 width="100%",
-                                gap="3px",
+                                gap="2px",
                                 justify_items="center",
                             ),
                             align="stretch",
                             spacing="2",
                         ),
                     ),
-                    flex="1 1 210px",
-                    min_width="200px",
+                    flex="1 1 280px",
+                    min_width="260px",
                 ),
                 rx.box(
                     _card(
@@ -1210,13 +2081,13 @@ def booking_page() -> rx.Component:
                             gap="6px",
                         ),
                     ),
-                    flex="1 1 190px",
-                    min_width="190px",
+                    flex="1 1 250px",
+                    min_width="230px",
                 ),
                 rx.box(
                     _card(
                         "Resumo do Agendamento",
-                        rx.vstack(
+                        rx.flex(
                             rx.flex(
                                 rx.box(
                                     rx.icon(
@@ -1259,27 +2130,32 @@ def booking_page() -> rx.Component:
                                 ),
                                 align="center",
                                 gap="8px",
-                                width="100%",
+                                flex="1 1 240px",
                             ),
                             rx.flex(
                                 rx.icon(tag="calendar_days", size=15, color=MUTED),
-                                rx.text(
-                                    AppState.selected_date_display,
-                                    color=FOREGROUND,
-                                    font_size="0.7rem",
+                                rx.vstack(
+                                    rx.text(
+                                        AppState.selected_date_display,
+                                        color=FOREGROUND,
+                                        font_size="0.7rem",
+                                    ),
+                                    rx.flex(
+                                        rx.icon(tag="clock_3", size=15, color=MUTED),
+                                        rx.text(
+                                            AppState.selected_time,
+                                            color=FOREGROUND,
+                                            font_size="0.7rem",
+                                        ),
+                                        align="center",
+                                        gap="8px",
+                                    ),
+                                    align="start",
+                                    spacing="1",
                                 ),
                                 align="center",
                                 gap="8px",
-                            ),
-                            rx.flex(
-                                rx.icon(tag="clock_3", size=15, color=MUTED),
-                                rx.text(
-                                    AppState.selected_time,
-                                    color=FOREGROUND,
-                                    font_size="0.7rem",
-                                ),
-                                align="center",
-                                gap="8px",
+                                flex="0 1 180px",
                             ),
                             rx.button(
                                 rx.icon(tag="check", size=15, aria_hidden=True),
@@ -1288,20 +2164,23 @@ def booking_page() -> rx.Component:
                                 on_click=AppState.confirm_booking,
                                 disabled=AppState.is_loading
                                 | (AppState.selected_time == ""),
-                                width="100%",
                                 background_color=ACCENT,
-                                color="#17140f",
+                                color="#090909",
                                 font_size="0.68rem",
                                 font_weight="700",
                                 border_radius="7px",
-                                margin_top="5px",
+                                white_space="nowrap",
+                                class_name="w-full md:w-auto",
                             ),
-                            align="stretch",
-                            spacing="4",
+                            align="center",
+                            justify="between",
+                            flex_wrap="wrap",
+                            gap="16px",
+                            width="100%",
                         ),
                     ),
-                    flex="1 1 190px",
-                    min_width="190px",
+                    flex="1 1 100%",
+                    min_width="0",
                 ),
                 align="start",
                 flex_wrap="wrap",
@@ -1316,134 +2195,297 @@ def booking_page() -> rx.Component:
 
 
 def profile_page() -> rx.Component:
-    return _customer_page(
-        active_path="/",
-        links=PORTAL_LINKS,
-        content=rx.vstack(
-            rx.heading("Minha Conta", as_="h1", size="5", color=FOREGROUND),
+    profile_card = _card(
+        "Meu Perfil",
+        rx.vstack(
             rx.flex(
                 rx.box(
-                    rx.icon(tag="user_round", size=34, color="#d2d0cb", aria_hidden=True),
-                    background_color="#596270",
+                    rx.icon(
+                        tag="user_round",
+                        size=60,
+                        color="#d2d0cb",
+                        aria_hidden=True,
+                    ),
+                    background_color=SURFACE_RAISED,
+                    border=f"3px solid {ACCENT}",
                     border_radius="50%",
-                    width="64px",
-                    height="64px",
+                    width="120px",
+                    height="120px",
                     display="flex",
                     align_items="center",
                     justify_content="center",
+                    flex_shrink="0",
                 ),
                 rx.vstack(
-                    rx.text(
+                    rx.heading(
                         AppState.user_name,
+                        as_="h2",
+                        size="4",
                         color=FOREGROUND,
-                        font_size="1.05rem",
-                        font_weight="700",
                     ),
-                    rx.text("Cliente desde 2026", color=MUTED, font_size="0.77rem"),
+                    rx.text(AppState.user_email, color=MUTED, font_size="0.8rem"),
+                    _coming_soon_button("Alterar Foto"),
                     align="start",
-                    spacing="1",
+                    spacing="2",
+                    min_width="0",
                 ),
                 align="center",
-                gap="14px",
-                background_color="#10100f",
-                border=f"1px solid {SURFACE_BORDER}",
-                border_radius="10px",
-                padding="16px",
+                flex_wrap="wrap",
+                gap="16px",
                 width="100%",
             ),
-            rx.box(
-                _card(
-                    "Informações Pessoais",
-                    rx.vstack(
-                        rx.vstack(
-                            rx.el.label(
-                                "Nome completo",
-                                color=MUTED,
-                                font_size="0.75rem",
-                                html_for="profile-name",
-                            ),
-                            rx.el.input(
-                                id="profile-name",
-                                type="text",
-                                value=AppState.profile_name,
-                                on_change=AppState.set_profile_name,
-                                aria_label="Nome completo",
-                                background_color="#111110",
-                                color=FOREGROUND,
-                                border=f"1px solid {SURFACE_BORDER}",
-                                border_radius="7px",
-                                padding="10px 12px",
-                                width="100%",
-                            ),
-                            align="stretch",
-                            spacing="1",
-                            width="100%",
-                        ),
-                        rx.vstack(
-                            rx.el.label(
-                                "E-mail",
-                                color=MUTED,
-                                font_size="0.75rem",
-                                html_for="profile-email",
-                            ),
-                            rx.el.input(
-                                id="profile-email",
-                                type="email",
-                                value=AppState.profile_email,
-                                on_change=AppState.set_profile_email,
-                                aria_label="E-mail",
-                                background_color="#111110",
-                                color=FOREGROUND,
-                                border=f"1px solid {SURFACE_BORDER}",
-                                border_radius="7px",
-                                padding="10px 12px",
-                                width="100%",
-                            ),
-                            align="stretch",
-                            spacing="1",
-                            width="100%",
-                        ),
-                        rx.vstack(
-                            rx.el.label(
-                                "Telefone / WhatsApp",
-                                color=MUTED,
-                                font_size="0.75rem",
-                                html_for="profile-phone",
-                            ),
-                            rx.el.input(
-                                id="profile-phone",
-                                type="tel",
-                                value=AppState.profile_phone,
-                                on_change=AppState.set_profile_phone,
-                                aria_label="Telefone / WhatsApp",
-                                background_color="#111110",
-                                color=FOREGROUND,
-                                border=f"1px solid {SURFACE_BORDER}",
-                                border_radius="7px",
-                                padding="10px 12px",
-                                width="100%",
-                            ),
-                            align="stretch",
-                            spacing="1",
-                            width="100%",
-                        ),
-                        rx.button(
-                            "Salvar Alterações",
-                            type="button",
-                            on_click=AppState.save_profile,
-                            color="#17140f",
-                            background_color=ACCENT,
-                            border_radius="7px",
-                            padding="10px 16px",
-                            font_weight="700",
-                            align_self="start",
-                            margin_top="4px",
-                        ),
-                        align="stretch",
-                        spacing="4",
+            rx.flex(
+                rx.icon(tag="phone", size=17, color=ACCENT, aria_hidden=True),
+                rx.text(
+                    AppState.user_phone,
+                    color=FOREGROUND,
+                    font_size="0.8rem",
+                    flex="1",
+                ),
+                rx.link(
+                    "Editar",
+                    href="#profile-phone",
+                    color=ACCENT,
+                    font_size="0.74rem",
+                    text_decoration="none",
+                ),
+                align="center",
+                gap="10px",
+                width="100%",
+                padding_top="12px",
+                border_top=f"1px solid {SURFACE_BORDER}",
+            ),
+            rx.flex(
+                rx.icon(tag="mail", size=17, color=ACCENT, aria_hidden=True),
+                rx.text(
+                    AppState.user_email,
+                    color=FOREGROUND,
+                    font_size="0.8rem",
+                    flex="1",
+                ),
+                rx.link(
+                    "Editar",
+                    href="#profile-email",
+                    color=ACCENT,
+                    font_size="0.74rem",
+                    text_decoration="none",
+                ),
+                align="center",
+                gap="10px",
+                width="100%",
+            ),
+            align="stretch",
+            spacing="3",
+        ),
+    )
+    personal_info_card = _card(
+        "Informações Pessoais",
+        rx.vstack(
+            rx.vstack(
+                rx.el.label(
+                    "Nome completo",
+                    color=MUTED,
+                    font_size="0.75rem",
+                    html_for="profile-name",
+                ),
+                rx.el.input(
+                    id="profile-name",
+                    type="text",
+                    value=AppState.profile_name,
+                    on_change=AppState.set_profile_name,
+                    aria_label="Nome completo",
+                    background_color=SURFACE_RAISED,
+                    color=FOREGROUND,
+                    border=f"1px solid {SURFACE_BORDER}",
+                    border_radius="7px",
+                    padding="10px 12px",
+                    width="100%",
+                    _focus={
+                        "outline": f"2px solid {ACCENT}",
+                        "outline_offset": "2px",
+                    },
+                ),
+                align="stretch",
+                spacing="1",
+                width="100%",
+            ),
+            rx.vstack(
+                rx.el.label(
+                    "Telefone",
+                    color=MUTED,
+                    font_size="0.75rem",
+                    html_for="profile-phone",
+                ),
+                rx.el.input(
+                    id="profile-phone",
+                    type="tel",
+                    value=AppState.profile_phone,
+                    on_change=AppState.set_profile_phone,
+                    aria_label="Telefone",
+                    background_color=SURFACE_RAISED,
+                    color=FOREGROUND,
+                    border=f"1px solid {SURFACE_BORDER}",
+                    border_radius="7px",
+                    padding="10px 12px",
+                    width="100%",
+                    _focus={
+                        "outline": f"2px solid {ACCENT}",
+                        "outline_offset": "2px",
+                    },
+                ),
+                align="stretch",
+                spacing="1",
+                width="100%",
+            ),
+            rx.vstack(
+                rx.el.label(
+                    "E-mail",
+                    color=MUTED,
+                    font_size="0.75rem",
+                    html_for="profile-email",
+                ),
+                rx.el.input(
+                    id="profile-email",
+                    type="email",
+                    value=AppState.profile_email,
+                    on_change=AppState.set_profile_email,
+                    aria_label="E-mail",
+                    background_color=SURFACE_RAISED,
+                    color=FOREGROUND,
+                    border=f"1px solid {SURFACE_BORDER}",
+                    border_radius="7px",
+                    padding="10px 12px",
+                    width="100%",
+                    _focus={
+                        "outline": f"2px solid {ACCENT}",
+                        "outline_offset": "2px",
+                    },
+                ),
+                align="stretch",
+                spacing="1",
+                width="100%",
+            ),
+            rx.button(
+                "Salvar Alterações",
+                type="button",
+                on_click=AppState.save_profile,
+                color="#090909",
+                background_color=ACCENT,
+                border_radius="9px",
+                padding="11px 16px",
+                font_weight="700",
+                width="100%",
+                _focus={
+                    "outline": f"2px solid {FOREGROUND}",
+                    "outline_offset": "2px",
+                },
+            ),
+            align="stretch",
+            spacing="3",
+        ),
+    )
+    security_card = _card(
+        "Segurança",
+        rx.vstack(
+            rx.flex(
+                rx.icon(tag="lock_keyhole", size=20, color=ACCENT, aria_hidden=True),
+                rx.text(
+                    "Senha",
+                    color=FOREGROUND,
+                    font_size="0.8rem",
+                    flex="1",
+                ),
+                _coming_soon_button("Alterar Senha"),
+                align="center",
+                gap="10px",
+                width="100%",
+                padding="10px 0",
+                border_bottom=f"1px solid {SURFACE_BORDER}",
+            ),
+            rx.flex(
+                rx.icon(tag="shield_check", size=20, color=ACCENT, aria_hidden=True),
+                rx.text(
+                    "Autenticação em Duas Etapas",
+                    color=FOREGROUND,
+                    font_size="0.8rem",
+                    flex="1",
+                ),
+                rx.switch(
+                    checked=False,
+                    disabled=True,
+                    aria_label="Autenticação em Duas Etapas, Em breve",
+                ),
+                rx.text(
+                    "Em breve",
+                    color=MUTED,
+                    font_size="0.66rem",
+                    font_weight="700",
+                ),
+                align="center",
+                flex_wrap="wrap",
+                gap="10px",
+                width="100%",
+                padding="10px 0",
+                border_bottom=f"1px solid {SURFACE_BORDER}",
+            ),
+            _coming_soon_button("Sair de Todos os Dispositivos"),
+            align="stretch",
+            spacing="3",
+        ),
+    )
+    history_card = _card(
+        "Meu Histórico",
+        rx.vstack(
+            rx.cond(
+                AppState.historical_appointments.length() == 0,
+                rx.cond(
+                    AppState.is_loading,
+                    rx.text("Carregando histórico...", color=MUTED, role="status"),
+                    rx.text(
+                        "Acesse seu histórico completo para ver os atendimentos.",
+                        color=MUTED,
+                        font_size="0.78rem",
                     ),
                 ),
-                flex="1 1 420px",
+                rx.vstack(
+                    rx.foreach(
+                        AppState.historical_appointments[:3],
+                        _mini_history_item,
+                    ),
+                    align="stretch",
+                    spacing="0",
+                ),
+            ),
+            rx.link(
+                "Ver Histórico",
+                href="/historico",
+                color=ACCENT,
+                font_size="0.76rem",
+                font_weight="700",
+                text_decoration="none",
+                align_self="end",
+            ),
+            align="stretch",
+            spacing="3",
+        ),
+    )
+    return _customer_page(
+        active_path="/perfil",
+        links=PORTAL_LINKS,
+        content=rx.vstack(
+            _page_header(
+                "Área do cliente",
+                "Meu Perfil",
+                "Gerencie suas informações pessoais e preferências.",
+            ),
+            rx.grid(
+                profile_card,
+                personal_info_card,
+                security_card,
+                history_card,
+                gap="16px",
+                width="100%",
+                class_name="grid grid-cols-1 xl:grid-cols-2",
             ),
             align="stretch",
             spacing="4",

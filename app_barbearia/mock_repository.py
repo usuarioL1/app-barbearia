@@ -536,6 +536,8 @@ class MockRepository:
         barber_id: str = "",
         status: str = "",
         date: str = "",
+        from_date: str = "",
+        to_date: str = "",
     ) -> list[AppointmentRecord]:
         records = [
             item
@@ -543,6 +545,8 @@ class MockRepository:
             if (not barber_id or item["barber_id"] == barber_id)
             and (not status or item["status"] == status)
             and (not date or item["date"] == date)
+            and (not from_date or item["date"] >= from_date)
+            and (not to_date or item["date"] <= to_date)
         ]
         return _present_appointments(sorted(records, key=lambda item: (item["date"], item["time"])))
 
@@ -683,14 +687,21 @@ class MockRepository:
             and appointment["status"] != "cancelled"
         ]
         valid: list[str] = []
-        start = datetime.combine(selected_date, time(9, 0), LOCAL_TIMEZONE)
+        opening_time = datetime.combine(selected_date, time(9, 0), LOCAL_TIMEZONE)
+        start = max(opening_time, earliest_start)
+        if start.second or start.microsecond:
+            start = start.replace(second=0, microsecond=0) + timedelta(minutes=1)
         while start + duration + preparation <= closing_time:
-            end = start + duration
-            if start >= earliest_start and not any(
-                start < busy_end and end + preparation > busy_start
+            conflicting_ends = [
+                busy_end
                 for busy_start, busy_end in busy
-            ):
-                valid.append(start.strftime("%H:%M"))
+                if start < busy_end
+                and start + duration + preparation > busy_start
+            ]
+            if conflicting_ends:
+                start = max(conflicting_ends)
+                continue
+            valid.append(start.strftime("%H:%M"))
             start += duration + preparation
         return valid
 
@@ -709,7 +720,7 @@ class MockRepository:
             raise MockFailure(
                 "Este horário não está mais disponível.",
                 code="appointment_conflict",
-                status_code=409,
+                status_code=400,
             )
         client = await cls.user(client_id)
         barber = next(item for item in _BARBERS if item["id"] == barber_id)

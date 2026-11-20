@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any, Literal
 
 import reflex as rx
 
 from app_barbearia.mock_repository import (
+    LOCAL_TIMEZONE,
     MOCK_NOW,
     AppointmentRecord,
     BarberRecord,
@@ -33,6 +34,21 @@ _MONTH_LABELS = (
     "Nov",
     "Dez",
 )
+
+
+def _default_booking_date(duration_minutes: int) -> date:
+    now = datetime.now(LOCAL_TIMEZONE)
+    opening = datetime.combine(now.date(), time(9), tzinfo=LOCAL_TIMEZONE)
+    closing = datetime.combine(now.date(), time(18), tzinfo=LOCAL_TIMEZONE)
+    earliest_start = max(opening, now + timedelta(hours=2))
+    if now.weekday() == 6 or earliest_start + timedelta(
+        minutes=duration_minutes + 15
+    ) > closing:
+        next_day = now.date() + timedelta(days=1)
+        while next_day.weekday() == 6:
+            next_day += timedelta(days=1)
+        return next_day
+    return now.date()
 
 
 async def _monthly_revenue_series(
@@ -922,6 +938,21 @@ class AppState(rx.State):
             self._set_failure(error)
         else:
             barber_view = barber_appointment_view(result.data)
+            barber_view = {
+                **next(
+                    (
+                        item
+                        for item in self.barber_appointments
+                        if item["id"] == appointment_id
+                    ),
+                    {},
+                ),
+                **{
+                    key: value
+                    for key, value in barber_view.items()
+                    if value != ""
+                },
+            }
             self.barber_appointments = [
                 barber_view if item["id"] == appointment_id else item
                 for item in self.barber_appointments
@@ -946,21 +977,25 @@ class AppState(rx.State):
             self.error_message = "Informe uma data válida para a agenda."
             self.success_message = ""
             return
+        week_start = selected - timedelta(days=selected.weekday())
+        week_dates = [
+            week_start + timedelta(days=day_number)
+            for day_number in range(7)
+        ]
+        range_start = week_dates[0]
+        range_end = week_dates[-1]
         self._begin_request()
         try:
             appointments = await _repository_for(self).admin_appointments(
                 barber_id=barber_id,
                 status=status,
+                from_date=range_start.isoformat(),
+                to_date=range_end.isoformat(),
             )
             barbers = await _repository_for(self).barbers()
         except MockFailure as error:
             self._set_failure(error)
         else:
-            week_start = selected - timedelta(days=selected.weekday())
-            week_dates = [
-                week_start + timedelta(days=day_number)
-                for day_number in range(7)
-            ]
             week_end = week_dates[-1]
             self.admin_date = selected_date
             self.admin_filter_barber = barber_id
@@ -1058,7 +1093,16 @@ class AppState(rx.State):
             self._set_failure(error)
         else:
             updated_appointments = [
-                result.data if item["id"] == appointment_id else item
+                {
+                    **item,
+                    **{
+                        key: value
+                        for key, value in result.data.items()
+                        if value != ""
+                    },
+                }
+                if item["id"] == appointment_id
+                else item
                 for item in self.admin_appointments
             ]
             if (
@@ -1268,37 +1312,24 @@ class AppState(rx.State):
         if not allowed:
             return redirect
         self._begin_request()
+        self.services = []
+        self.barbers = []
+        self.available_times = []
+        self.selected_time = ""
         try:
-            services = await _repository_for(self).services()
-            barbers = await _repository_for(self).barbers()
-            available_times = await _repository_for(self).availability(
-                self.selected_barber_id,
-                self.selected_service_id,
-                self.selected_date,
-            )
-        except MockFailure as error:
-            self.available_times = []
-            self.selected_time = ""
-            self.available_times = []
-            self.selected_time = ""
-            self._set_failure(error)
-        else:
+            repository = _repository_for(self)
+            services = await repository.services()
+            barbers = await repository.barbers()
             self.services = services
             self.barbers = barbers
-            self.booking_month = self.selected_date[:7]
-            self.booking_month_display = self._month_label(self.booking_month)
-            self.selected_day = self.selected_date[-2:]
-            self.selected_date_display = date.fromisoformat(
-                self.selected_date
-            ).strftime("%d/%m/%Y")
-            self.calendar_days = self._calendar_for_month(self.booking_month)
+
             selected_service = next(
                 (
                     service
                     for service in services
                     if service["id"] == self.selected_service_id
                 ),
-                None,
+                services[0] if services else None,
             )
             selected_barber = next(
                 (
@@ -1306,16 +1337,63 @@ class AppState(rx.State):
                     for barber in barbers
                     if barber["id"] == self.selected_barber_id
                 ),
-                None,
+                barbers[0] if barbers else None,
             )
             if selected_service is not None:
+                self.selected_service_id = selected_service["id"]
                 self.selected_service_title = selected_service["title"]
                 self.selected_service_price = selected_service["price_display"]
                 self.selected_service_duration = (
                     f"{selected_service['duration_minutes']} min"
                 )
+            else:
+                self.selected_service_id = ""
+                self.selected_service_title = ""
+                self.selected_service_price = ""
+                self.selected_service_duration = ""
             if selected_barber is not None:
+                self.selected_barber_id = selected_barber["id"]
                 self.selected_barber_name = selected_barber["name"]
+            else:
+                self.selected_barber_id = ""
+                self.selected_barber_name = ""
+
+            if isinstance(repository, XanoRepository):
+                today = datetime.now(LOCAL_TIMEZONE).date()
+                try:
+                    selected_date = date.fromisoformat(self.selected_date)
+                except ValueError:
+                    selected_date = today - timedelta(days=1)
+                if not today <= selected_date <= today + timedelta(days=30):
+                    selected_date = _default_booking_date(
+                        selected_service["duration_minutes"]
+                        if selected_service is not None
+                        else 30
+                    )
+                self.selected_date = selected_date.isoformat()
+
+            self.booking_month = self.selected_date[:7]
+            self.booking_month_display = self._month_label(self.booking_month)
+            self.selected_day = self.selected_date[-2:]
+            self.selected_date_display = date.fromisoformat(
+                self.selected_date
+            ).strftime("%d/%m/%Y")
+            self.calendar_days = self._calendar_for_month(self.booking_month)
+
+            available_times = (
+                await repository.availability(
+                    self.selected_barber_id,
+                    self.selected_service_id,
+                    self.selected_date,
+                )
+                if selected_service is not None and selected_barber is not None
+                else []
+            )
+        except MockFailure as error:
+            self.available_times = []
+            self.selected_time = ""
+            self._set_failure(error)
+        else:
             self.available_times = available_times
             if self.selected_time not in available_times:
                 self.selected_time = available_times[0] if available_times else ""
@@ -1490,7 +1568,16 @@ class AppState(rx.State):
             self._set_failure(error)
         else:
             appointments = [
-                result.data if item["id"] == appointment_id else item
+                {
+                    **item,
+                    **{
+                        key: value
+                        for key, value in result.data.items()
+                        if value != ""
+                    },
+                }
+                if item["id"] == appointment_id
+                else item
                 for item in self.customer_appointments
             ]
             self._split_customer_appointments(appointments)
