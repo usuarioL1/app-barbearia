@@ -6,6 +6,8 @@ query "availability" verb=GET {
     int barber_id
     int service_id
     text date filters=trim
+    int[] service_ids?
+    int duration_minutes?
   }
 
   stack {
@@ -44,6 +46,10 @@ query "availability" verb=GET {
     precondition ($barber_user != null && $barber_user.active == true && $barber_user.role == "barber" && $service != null && $service.active == true && $service.duration_minutes != null && $service.duration_minutes > 0) {
       error_type = "inputerror"
       error = "Selecione um serviço e barbeiro ativos."
+    }
+
+    var $combined_duration {
+      value = $input.duration_minutes != null ? $input.duration_minutes : $service.duration_minutes
     }
 
     var $day_start_text {
@@ -133,7 +139,7 @@ query "availability" verb=GET {
     foreach (0|range:0:100) {
       each as $attempt {
         var $candidate_busy_end {
-          value = $candidate|add_secs_to_timestamp:(($service.duration_minutes * 60) + 900)
+          value = $candidate|add_secs_to_timestamp:(($combined_duration * 60) + 900)
         }
 
         conditional {
@@ -177,7 +183,7 @@ query "availability" verb=GET {
                 }
 
                 var.update $candidate {
-                  value = $candidate|add_secs_to_timestamp:(($service.duration_minutes * 60) + 900)
+                  value = $candidate|add_secs_to_timestamp:(($combined_duration * 60) + 900)
                 }
               }
 

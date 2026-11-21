@@ -271,6 +271,7 @@ class AppState(rx.State):
     reschedule_available_times: list[str] = []
 
     selected_service_id: str = "corte"
+    selected_service_ids: list[str] = []
     selected_service_title: str = "Corte Masculino"
     selected_service_price: str = "R$ 40,00"
     selected_service_duration: str = "30 min"
@@ -1413,11 +1414,11 @@ class AppState(rx.State):
             )
             if selected_service is not None:
                 self.selected_service_id = selected_service["id"]
-                self.selected_service_title = selected_service["title"]
-                self.selected_service_price = selected_service["price_display"]
-                self.selected_service_duration = (
-                    f"{selected_service['duration_minutes']} min"
-                )
+                if not self.selected_service_ids:
+                    self.selected_service_ids = [selected_service["id"]]
+                elif self.selected_service_id not in self.selected_service_ids:
+                    self.selected_service_ids = [selected_service["id"]]
+                self._update_selected_service_summary()
             else:
                 self.selected_service_id = ""
                 self.selected_service_title = ""
@@ -1457,6 +1458,12 @@ class AppState(rx.State):
                     self.selected_barber_id,
                     self.selected_service_id,
                     self.selected_date,
+                    service_ids=self.selected_service_ids,
+                    duration_minutes=sum(
+                        service["duration_minutes"]
+                        for service in services
+                        if service["id"] in self.selected_service_ids
+                    ),
                 )
                 if selected_service is not None and selected_barber is not None
                 else []
@@ -1479,11 +1486,35 @@ class AppState(rx.State):
     @rx.event
     def start_booking(self, service_id: str) -> rx.event.EventSpec:
         self.selected_service_id = service_id
+        self.selected_service_ids = [service_id]
         self.selected_time = ""
         self.booking_confirmed = False
         self.error_message = ""
         self.success_message = ""
+        self._update_selected_service_summary()
         return rx.redirect("/agendar")
+
+    def _update_selected_service_summary(self) -> None:
+        selected = [
+            service
+            for service in self.services
+            if service["id"] in self.selected_service_ids
+        ]
+        if not selected:
+            self.selected_service_title = ""
+            self.selected_service_price = "R$ 0,00"
+            self.selected_service_duration = "0 min"
+            self.selected_service_id = ""
+            return
+        total_cents = sum(service["price_cents"] for service in selected)
+        total_minutes = sum(service["duration_minutes"] for service in selected)
+        self.selected_service_ids = [service["id"] for service in selected]
+        self.selected_service_id = self.selected_service_ids[0]
+        self.selected_service_title = " + ".join(service["title"] for service in selected)
+        self.selected_service_price = (
+            f"R$ {total_cents // 100},{total_cents % 100:02d}"
+        )
+        self.selected_service_duration = f"{total_minutes} min"
 
     @rx.event
     def start_barber_booking(self, barber_id: str) -> rx.event.EventSpec:
@@ -1496,7 +1527,18 @@ class AppState(rx.State):
 
     @rx.event
     async def select_booking_service(self, service_id: str) -> None:
-        await self._refresh_booking_options(service_id=service_id)
+        if service_id in self.selected_service_ids:
+            if len(self.selected_service_ids) == 1:
+                self.error_message = "Selecione pelo menos um serviço."
+                self.success_message = ""
+                return
+            self.selected_service_ids = [
+                item for item in self.selected_service_ids if item != service_id
+            ]
+        else:
+            self.selected_service_ids = [*self.selected_service_ids, service_id]
+        self._update_selected_service_summary()
+        await self._refresh_booking_options(service_id=self.selected_service_id)
 
     @rx.event
     async def select_booking_barber(self, barber_id: str) -> None:
@@ -1514,10 +1556,20 @@ class AppState(rx.State):
         next_date = selected_date or self.selected_date
         self._begin_request()
         try:
+            selected_services = [
+                service
+                for service in self.services
+                if service["id"] in self.selected_service_ids
+            ]
+            combined_duration = sum(
+                service["duration_minutes"] for service in selected_services
+            )
             available_times = await _repository_for(self).availability(
                 next_barber,
                 next_service,
                 next_date,
+                service_ids=self.selected_service_ids,
+                duration_minutes=combined_duration,
             )
         except MockFailure as error:
             self.available_times = []
@@ -1549,11 +1601,7 @@ class AppState(rx.State):
                 None,
             )
             if selected_service is not None:
-                self.selected_service_title = selected_service["title"]
-                self.selected_service_price = selected_service["price_display"]
-                self.selected_service_duration = (
-                    f"{selected_service['duration_minutes']} min"
-                )
+                self._update_selected_service_summary()
             if selected_barber is not None:
                 self.selected_barber_name = selected_barber["name"]
             self.available_times = available_times
@@ -1597,17 +1645,18 @@ class AppState(rx.State):
         self.booking_confirmed = False
 
     @rx.event
-    async def confirm_booking(self) -> None:
+    async def confirm_booking(self) -> rx.event.EventSpec | None:
         if self.selected_time not in self.available_times:
             self.error_message = "Selecione um horário disponível antes de confirmar."
             self.success_message = ""
-            return
+            return None
         self._begin_request()
         try:
             result = await _repository_for(self).create_appointment(
                 client_id=self.current_user_id,
                 barber_id=self.selected_barber_id,
                 service_id=self.selected_service_id,
+                service_ids=self.selected_service_ids,
                 date=self.selected_date,
                 start_time=self.selected_time,
             )
@@ -1625,6 +1674,8 @@ class AppState(rx.State):
             self.booking_confirmation_date = result.data["date_display"]
             self.booking_confirmation_time = result.data["time"]
             self.success_message = result.message
+            self.error_message = ""
+            return rx.redirect("/")
         finally:
             self._end_request()
 

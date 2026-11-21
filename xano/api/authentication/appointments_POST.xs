@@ -5,6 +5,7 @@ query "appointments" verb=POST {
   input {
     int barber_id
     int service_id
+    int[] service_ids?
     timestamp start_time
   }
 
@@ -46,6 +47,48 @@ query "appointments" verb=POST {
       error = "Selecione um serviço e barbeiro ativos."
     }
 
+    var $combined_duration {
+      value = $service.duration_minutes
+    }
+    var $combined_price {
+      value = $service.price
+    }
+    var $combined_title {
+      value = $service.title
+    }
+
+    conditional {
+      if ($input.service_ids != null) {
+        foreach ($input.service_ids) {
+          each as $selected_service_id {
+            conditional {
+              if ($selected_service_id != $input.service_id) {
+                db.get "service" {
+                  field_name = "id"
+                  field_value = $selected_service_id
+                } as $selected_service
+
+                precondition ($selected_service != null && $selected_service.active == true) {
+                  error_type = "inputerror"
+                  error = "Selecione somente serviços ativos."
+                }
+
+                var.update $combined_duration {
+                  value = $combined_duration + $selected_service.duration_minutes
+                }
+                var.update $combined_price {
+                  value = $combined_price + $selected_service.price
+                }
+                var.update $combined_title {
+                  value = $combined_title ~ " + " ~ $selected_service.title
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     var $local_date {
       value = $input.start_time|format_timestamp:"Y-m-d":"America/Sao_Paulo"
     }
@@ -79,11 +122,11 @@ query "appointments" verb=POST {
     }
 
     var $end_time {
-      value = $input.start_time|add_secs_to_timestamp:($service.duration_minutes * 60)
+      value = $input.start_time|add_secs_to_timestamp:($combined_duration * 60)
     }
 
     var $requested_busy_end {
-      value = $input.start_time|add_secs_to_timestamp:(($service.duration_minutes * 60) + 900)
+      value = $input.start_time|add_secs_to_timestamp:(($combined_duration * 60) + 900)
     }
 
     var $earliest {
@@ -146,9 +189,9 @@ query "appointments" verb=POST {
             client_id                : $actor.id
             barber_id                : $barber.id
             service_id               : $service.id
-            service_title_snapshot   : $service.title
-            price_snapshot           : $service.price
-            duration_minutes_snapshot: $service.duration_minutes
+            service_title_snapshot   : $combined_title
+            price_snapshot           : $combined_price
+            duration_minutes_snapshot: $combined_duration
             start_time               : $input.start_time
             end_time                 : $end_time
             status                   : "pending"
@@ -175,9 +218,9 @@ query "appointments" verb=POST {
     client_id                : $appointment.client_id
     barber_id                : $appointment.barber_id
     service_id               : $appointment.service_id
-    service_title_snapshot   : $appointment.service_title_snapshot
-    price_snapshot           : $appointment.price_snapshot
-    duration_minutes_snapshot: $appointment.duration_minutes_snapshot
+    service_title_snapshot   : $combined_title
+    price_snapshot           : $combined_price
+    duration_minutes_snapshot: $combined_duration
     start_time               : $appointment.start_time|format_timestamp:"Y-m-d\\TH:i:sP":"America/Sao_Paulo"
     end_time                 : $appointment.end_time|format_timestamp:"Y-m-d\\TH:i:sP":"America/Sao_Paulo"
     status                   : "pending"

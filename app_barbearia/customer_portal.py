@@ -1921,7 +1921,7 @@ def _booking_service_option(service: ServiceRecord) -> rx.Component:
     return _booking_option(
         service["title"],
         service["booking_description"],
-        selected=AppState.selected_service_id == service["id"],
+        selected=AppState.selected_service_ids.contains(service["id"]),
         icon_tag=service["icon_tag"],
         on_click=AppState.select_booking_service(service["id"]),
     )

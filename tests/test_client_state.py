@@ -19,6 +19,7 @@ class ClientStateHarness:
         self.available_times = []
         self.selected_time = ""
         self.selected_service_id = "corte"
+        self.selected_service_ids = ["corte"]
         self.selected_barber_id = "rafael"
         self.selected_date = "2026-08-25"
         self.current_user_id = "client-lucas"
@@ -309,12 +310,13 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         state.selected_time = "09:45"
 
         with patch("app_barbearia.api_client.request_json", new=AsyncMock()) as request:
-            await AppState.confirm_booking.fn(state)
+            redirect = await AppState.confirm_booking.fn(state)
 
         request.assert_not_awaited()
         self.assertTrue(state.booking_confirmed)
         self.assertIn("nada foi salvo", state.success_message)
         self.assertEqual(state.booking_confirmation_time, "09:45")
+        self.assertIsNotNone(redirect)
 
     async def test_login_validation_does_not_call_repository(self) -> None:
         state = ClientStateHarness()

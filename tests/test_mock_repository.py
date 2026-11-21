@@ -93,6 +93,21 @@ class MockRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("09:45", slots)
         self.assertIn("10:30", slots)
 
+    async def test_multiple_services_sum_price_and_duration(self) -> None:
+        result = await MockRepository.create_appointment(
+            client_id="client-lucas",
+            barber_id="rafael",
+            service_id="corte",
+            service_ids=["corte", "barba"],
+            date="2026-08-25",
+            start_time="09:45",
+        )
+
+        self.assertEqual(result.data["service_title"], "Corte Masculino + Barba")
+        self.assertEqual(result.data["price_cents"], 7500)
+        self.assertEqual(result.data["duration_minutes"], 60)
+        self.assertFalse(result.persisted)
+
     async def test_unavailable_slot_returns_a_conflict_not_a_success(self) -> None:
         with self.assertRaises(MockFailure) as raised:
             await MockRepository.create_appointment(

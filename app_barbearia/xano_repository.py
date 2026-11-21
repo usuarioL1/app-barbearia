@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import json
 import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
@@ -652,15 +653,25 @@ class XanoRepository:
         barber_id: str,
         service_id: str,
         date: str,
+        *,
+        service_ids: list[str] | None = None,
+        duration_minutes: int | None = None,
     ) -> list[str]:
+        params: dict[str, str] = {
+            "barber_id": barber_id,
+            "service_id": service_id,
+            "date": date,
+        }
+        if service_ids:
+            numeric_ids = [int(item) for item in service_ids if str(item).isdigit()]
+            if numeric_ids:
+                params["service_ids"] = json.dumps(numeric_ids)
+        if duration_minutes is not None:
+            params["duration_minutes"] = str(duration_minutes)
         response = await self._request(
             "GET",
             "availability",
-            params={
-                "barber_id": barber_id,
-                "service_id": service_id,
-                "date": date,
-            },
+            params=params,
         )
         if isinstance(response, dict):
             response = response.get("items")
@@ -681,6 +692,7 @@ class XanoRepository:
         service_id: str,
         date: str,
         start_time: str,
+        service_ids: list[str] | None = None,
     ) -> PersistedResult[AppointmentRecord]:
         del client_id
         start = datetime.fromisoformat(f"{date}T{start_time}").replace(
@@ -694,6 +706,11 @@ class XanoRepository:
                     payload={
                         "barber_id": barber_id,
                         "service_id": service_id,
+                        "service_ids": [
+                            int(item)
+                            for item in (service_ids or [service_id])
+                            if str(item).isdigit()
+                        ],
                         "start_time": start.isoformat(),
                     },
                 ),

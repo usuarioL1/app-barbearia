@@ -720,6 +720,9 @@ class MockRepository:
         barber_id: str,
         service_id: str,
         date: str,
+        *,
+        service_ids: list[str] | None = None,
+        duration_minutes: int | None = None,
     ) -> list[str]:
         barber = next((item for item in _BARBERS if item["id"] == barber_id and item["active"]), None)
         service = next((item for item in _SERVICES if item["id"] == service_id and item["active"]), None)
@@ -741,7 +744,17 @@ class MockRepository:
         ):
             return []
 
-        duration = timedelta(minutes=service["duration_minutes"])
+        if duration_minutes is not None:
+            combined_duration = duration_minutes
+        elif service_ids:
+            combined_duration = sum(
+                item["duration_minutes"]
+                for item in _SERVICES
+                if item["id"] in service_ids
+            )
+        else:
+            combined_duration = service["duration_minutes"]
+        duration = timedelta(minutes=combined_duration)
         preparation = timedelta(minutes=15)
         closing_time = datetime.combine(selected_date, time(18, 0), LOCAL_TIMEZONE)
         earliest_start = MOCK_NOW + timedelta(hours=2)
@@ -785,8 +798,14 @@ class MockRepository:
         service_id: str,
         date: str,
         start_time: str,
+        service_ids: list[str] | None = None,
     ) -> MockResult[AppointmentRecord]:
-        times = await cls.availability(barber_id, service_id, date)
+        times = await cls.availability(
+            barber_id,
+            service_id,
+            date,
+            service_ids=service_ids,
+        )
         if start_time not in times:
             raise MockFailure(
                 "Este horário não está mais disponível.",
@@ -796,6 +815,16 @@ class MockRepository:
         client = await cls.user(client_id)
         barber = next(item for item in _BARBERS if item["id"] == barber_id)
         service = next(item for item in _SERVICES if item["id"] == service_id)
+        selected_services = [
+            item
+            for item in _SERVICES
+            if item["id"] in (service_ids or [service_id])
+        ] or [service]
+        combined_title = " + ".join(item["title"] for item in selected_services)
+        combined_price_cents = sum(item["price_cents"] for item in selected_services)
+        combined_duration = sum(
+            item["duration_minutes"] for item in selected_services
+        )
         appointment: AppointmentSeed = {
             "id": "appointment-simulated",
             "client_id": client_id,
@@ -804,9 +833,9 @@ class MockRepository:
             "barber_id": barber_id,
             "barber_name": barber["name"],
             "service_id": service_id,
-            "service_title": service["title"],
-            "price_cents": service["price_cents"],
-            "duration_minutes": service["duration_minutes"],
+            "service_title": combined_title,
+            "price_cents": combined_price_cents,
+            "duration_minutes": combined_duration,
             "date": date,
             "time": start_time,
             "status": "pending",

@@ -266,6 +266,34 @@ class XanoRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.persisted)
         self.assertEqual(request.await_args.args[:2], ("POST", "appointments"))
 
+    async def test_successful_multi_service_booking_sends_service_ids(self) -> None:
+        response = {
+            "id": 14,
+            "client_id": 4,
+            "barber_id": 2,
+            "service_id": 5,
+            "service_title_snapshot": "Corte + Barba",
+            "price_snapshot": "75.00",
+            "duration_minutes_snapshot": 60,
+            "start_time": "2026-08-25T09:45:00-03:00",
+            "end_time": "2026-08-25T10:45:00-03:00",
+        }
+        request = AsyncMock(return_value=response)
+
+        with patch("app_barbearia.xano_repository.request_json", new=request):
+            await XanoRepository("session-token").create_appointment(
+                client_id="4",
+                barber_id="2",
+                service_id="5",
+                service_ids=["5", "6"],
+                date="2026-08-25",
+                start_time="09:45",
+            )
+
+        payload = request.await_args.kwargs["payload"]
+        self.assertEqual(payload["service_id"], "5")
+        self.assertEqual(payload["service_ids"], [5, 6])
+
     def test_appointment_reads_default_missing_status_to_pending(self) -> None:
         with self.assertLogs("app_barbearia.xano_repository", level="WARNING"):
             appointment = _appointment(self._appointment_payload())
