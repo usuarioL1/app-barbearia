@@ -1,3 +1,5 @@
+from typing import Literal
+
 import reflex as rx
 
 from app_barbearia.mock_repository import (
@@ -139,6 +141,27 @@ def _coming_soon_button(label: str) -> rx.Component:
         gap="7px",
         opacity="0.8",
         cursor="not-allowed",
+    )
+
+
+def _history_category_button(
+    label: Literal["Todos", "Cortes", "Barba", "Combos"],
+) -> rx.Component:
+    selected = AppState.history_category_filter == label
+    return rx.button(
+        label,
+        type="button",
+        on_click=AppState.set_history_category_filter(label),
+        aria_pressed=selected,
+        color=rx.cond(selected, "#090909", FOREGROUND),
+        background_color=rx.cond(selected, ACCENT, SURFACE_RAISED),
+        border=f"1px solid {SURFACE_BORDER}",
+        border_radius="999px",
+        padding="9px 16px",
+        font_weight=rx.cond(selected, "700", "500"),
+        cursor="pointer",
+        _hover={"border_color": ACCENT},
+        _focus={"outline": f"2px solid {ACCENT}", "outline_offset": "2px"},
     )
 
 
@@ -1677,7 +1700,7 @@ def appointments_page() -> rx.Component:
 
 
 def history_page() -> rx.Component:
-    completed_appointments = AppState.historical_appointments.filter(
+    completed_appointments = AppState.filtered_historical_appointments.filter(
         lambda item: item["status"] == "completed"
     )
     total_spent_cents = completed_appointments.reduce(
@@ -1695,27 +1718,25 @@ def history_page() -> rx.Component:
             ),
             rx.flex(
                 rx.flex(
-                    rx.button(
-                        "Todos",
-                        type="button",
-                        disabled=True,
-                        aria_pressed=True,
-                        color="#090909",
-                        background_color=ACCENT,
-                        border=f"1px solid {ACCENT}",
-                        border_radius="999px",
-                        padding="9px 16px",
-                        font_weight="700",
-                    ),
                     *[
-                        _coming_soon_button(label)
-                        for label in ("Cortes", "Barba", "Combos")
+                        _history_category_button(label)
+                        for label in ("Todos", "Cortes", "Barba", "Combos")
                     ],
                     align="center",
                     flex_wrap="wrap",
                     gap="8px",
                 ),
-                _coming_soon_button("Período"),
+                rx.select(
+                    ["Todos", "30 dias", "90 dias", "365 dias"],
+                    value=rx.cond(
+                        AppState.history_period_filter == "all",
+                        "Todos",
+                        AppState.history_period_filter + " dias",
+                    ),
+                    on_change=AppState.set_history_period_filter,
+                    aria_label="Filtrar histórico por período",
+                    background_color=SURFACE_RAISED,
+                ),
                 align="center",
                 justify="between",
                 flex_wrap="wrap",
@@ -1723,7 +1744,7 @@ def history_page() -> rx.Component:
                 width="100%",
             ),
             rx.cond(
-                AppState.historical_appointments.length() == 0,
+                AppState.filtered_historical_appointments.length() == 0,
                 rx.cond(
                     AppState.is_loading,
                     _card(
@@ -1738,14 +1759,22 @@ def history_page() -> rx.Component:
                         "Histórico",
                         rx.vstack(
                             rx.text(
-                                "Você ainda não tem atendimentos no histórico.",
+                                rx.cond(
+                                    AppState.historical_appointments.length() == 0,
+                                    "Você ainda não tem atendimentos no histórico.",
+                                    "Nenhum atendimento corresponde aos filtros selecionados.",
+                                ),
                                 color=MUTED,
                             ),
-                            rx.link(
-                                "Ver serviços",
-                                href="/servicos",
-                                color=ACCENT,
-                                text_decoration="none",
+                            rx.cond(
+                                AppState.historical_appointments.length() == 0,
+                                rx.link(
+                                    "Ver serviços",
+                                    href="/servicos",
+                                    color=ACCENT,
+                                    text_decoration="none",
+                                ),
+                                rx.fragment(),
                             ),
                             align="start",
                             spacing="2",

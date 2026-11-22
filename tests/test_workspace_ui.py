@@ -9,6 +9,7 @@ from app_barbearia.customer_portal import (
     _appointment_item,
     _service_image_name,
     appointments_page,
+    history_page,
 )
 from app_barbearia.ui import (
     UNPUBLISHED_ENDPOINT_ERROR,
@@ -90,6 +91,17 @@ class UnpublishedEndpointMessageTests(unittest.TestCase):
         self.assertIn('["flexWrap"] : "nowrap"', page)
         self.assertIn('["flex"] : "1 1 0%"', page)
         self.assertIn('["width"] : "34%"', page)
+
+    def test_customer_history_filters_are_enabled_and_show_empty_filter_state(self) -> None:
+        page = str(history_page())
+
+        self.assertIn("set_history_category_filter", page)
+        self.assertIn("set_history_period_filter", page)
+        self.assertIn("365 dias", page)
+        self.assertIn("Nenhum atendimento corresponde aos filtros selecionados.", page)
+        self.assertNotIn("CortesEm breve", page)
+        self.assertNotIn("BarbaEm breve", page)
+        self.assertNotIn("CombosEm breve", page)
 
 
 class ServiceImageMappingTests(unittest.TestCase):

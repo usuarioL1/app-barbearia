@@ -180,6 +180,12 @@ def _appointments_for_date(
     return [item for item in appointments if item["date"] == selected_date]
 
 
+def _appointments_reference_date() -> date:
+    if xano_enabled():
+        return datetime.now(LOCAL_TIMEZONE).date()
+    return MOCK_NOW.date()
+
+
 def _reconcile_missing_appointment_statuses(
     appointments: list[_AppointmentStatusRecord],
     filtered_appointments: dict[str, list[_AppointmentStatusRecord]],
@@ -912,7 +918,7 @@ class AppState(rx.State):
         self,
         appointments: list[AppointmentRecord],
     ) -> None:
-        today = MOCK_NOW.date().isoformat()
+        today = _appointments_reference_date().isoformat()
         appointments = sorted(
             appointments,
             key=lambda item: (item["date"], item["time"]),
@@ -934,7 +940,10 @@ class AppState(rx.State):
     def filtered_upcoming_appointments(self) -> list[AppointmentRecord]:
         if self.upcoming_period_filter == "all":
             return self.upcoming_appointments
-        cutoff = (MOCK_NOW.date() + timedelta(days=int(self.upcoming_period_filter))).isoformat()
+        cutoff = (
+            _appointments_reference_date()
+            + timedelta(days=int(self.upcoming_period_filter))
+        ).isoformat()
         return [
             item
             for item in self.upcoming_appointments
@@ -945,7 +954,10 @@ class AppState(rx.State):
     def filtered_historical_appointments(self) -> list[AppointmentRecord]:
         items = self.historical_appointments
         if self.history_period_filter != "all":
-            cutoff = (MOCK_NOW.date() - timedelta(days=int(self.history_period_filter))).isoformat()
+            cutoff = (
+                _appointments_reference_date()
+                - timedelta(days=int(self.history_period_filter))
+            ).isoformat()
             items = [item for item in items if item["date"] >= cutoff]
         category = self.history_category_filter
         if category == "Todos":
@@ -953,12 +965,13 @@ class AppState(rx.State):
 
         def matches_category(title: str) -> bool:
             normalized = title.strip().casefold()
+            is_combo = "combo" in normalized or "corte + barba" in normalized
             if category == "Combos":
-                return "combo" in normalized or "corte + barba" in normalized
+                return is_combo
             if category == "Barba":
-                return "barba" in normalized
+                return not is_combo and "barba" in normalized
             if category == "Cortes":
-                return any(
+                return not is_combo and any(
                     term in normalized
                     for term in ("corte", "pezinho", "acabamento", "sobrancelha")
                 )
@@ -2079,9 +2092,13 @@ class AppState(rx.State):
     @rx.event
     def set_history_period_filter(
         self,
-        value: Literal["all", "30", "90", "365"],
+        value: str,
     ) -> None:
-        self.history_period_filter = value
+        if value == "Todos":
+            self.history_period_filter = "all"
+            return
+        days = value.replace(" dias", "").strip()
+        self.history_period_filter = days if days in {"30", "90", "365"} else "all"
 
     @rx.event
     def set_history_category_filter(

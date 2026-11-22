@@ -30,6 +30,13 @@ class ClientStateHarness:
         self.booking_confirmation_date = ""
         self.booking_confirmation_time = ""
         self.customer_appointments = []
+        self.upcoming_appointments = []
+        self.next_appointments = []
+        self.historical_appointments = []
+        self.upcoming_period_filter = "all"
+        self.history_period_filter = "all"
+        self.history_category_filter = "Todos"
+        self.appointment_filter = "all"
         self.login_email = ""
         self.login_password = ""
         self.is_authenticated = False
@@ -222,6 +229,85 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state.upcoming_appointments, [])
         self.assertEqual(state.next_appointments, [])
         self.assertEqual(state.historical_appointments, [])
+
+    async def test_xano_customer_history_uses_real_reference_date(self) -> None:
+        state = ClientStateHarness()
+        appointments = [
+            {
+                "id": "past-with-omitted-status",
+                "date": "2026-11-20",
+                "time": "09:00",
+                "status": "pending",
+            },
+            {
+                "id": "future",
+                "date": "2026-11-23",
+                "time": "09:00",
+                "status": "pending",
+            },
+        ]
+
+        with patch(
+            "app_barbearia.state._appointments_reference_date",
+            return_value=date(2026, 11, 22),
+        ):
+            AppState._split_customer_appointments(state, appointments)
+
+        self.assertEqual(
+            [item["id"] for item in state.historical_appointments],
+            ["past-with-omitted-status"],
+        )
+        self.assertEqual(
+            [item["id"] for item in state.upcoming_appointments],
+            ["future"],
+        )
+
+    async def test_history_category_and_period_filters_are_operational(self) -> None:
+        state = ClientStateHarness()
+        state.historical_appointments = [
+            {
+                "id": "haircut",
+                "date": "2026-11-10",
+                "service_title": "Corte Masculino",
+            },
+            {
+                "id": "beard",
+                "date": "2026-11-11",
+                "service_title": "Barba",
+            },
+            {
+                "id": "combo",
+                "date": "2026-11-12",
+                "service_title": "Corte + Barba",
+            },
+            {
+                "id": "old-haircut",
+                "date": "2026-09-01",
+                "service_title": "Corte Masculino",
+            },
+        ]
+
+        with patch(
+            "app_barbearia.state._appointments_reference_date",
+            return_value=date(2026, 11, 22),
+        ):
+            AppState.set_history_category_filter.fn(state, "Barba")
+            AppState.set_history_period_filter.fn(state, "30 dias")
+            filtered = AppState.filtered_historical_appointments.fget(state)
+
+        self.assertEqual(
+            [item["id"] for item in filtered],
+            ["beard"],
+        )
+        self.assertEqual(state.history_period_filter, "30")
+
+        AppState.set_history_category_filter.fn(state, "Combos")
+        with patch(
+            "app_barbearia.state._appointments_reference_date",
+            return_value=date(2026, 11, 22),
+        ):
+            filtered_combos = AppState.filtered_historical_appointments.fget(state)
+        self.assertEqual([item["id"] for item in filtered_combos], ["combo"])
 
     async def test_real_backend_requires_a_session_without_using_mock_data(self) -> None:
         state = ClientStateHarness()
