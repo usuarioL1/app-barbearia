@@ -1,4 +1,6 @@
 import os
+from contextlib import redirect_stdout
+from io import StringIO
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -82,6 +84,73 @@ class XanoRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.await_args_list[1].args[:2], ("GET", "auth/me"))
         self.assertEqual(request.await_args_list[1].kwargs["token"], "session-token")
 
+    async def test_login_sends_expected_xano_fields(self) -> None:
+        request = AsyncMock(
+            return_value={
+                "authToken": "session-token",
+                "user": {
+                    "id": 42,
+                    "name": "Cliente",
+                    "email": "cliente@example.test",
+                    "phone": "",
+                    "role": "client",
+                },
+            }
+        )
+        with patch("app_barbearia.xano_repository.request_json", new=request):
+            result = await XanoRepository().authenticate(
+                " CLIENTE@example.test ",
+                "secret-password",
+            )
+
+        self.assertEqual(result.token, "session-token")
+        self.assertEqual(request.await_args.args[:2], ("POST", "auth/login"))
+        self.assertEqual(
+            request.await_args.kwargs["payload"],
+            {"email": "cliente@example.test", "password": "secret-password"},
+        )
+        self.assertEqual(request.await_args.kwargs["token"], "")
+
+    async def test_login_failure_prints_status_and_redacted_json(self) -> None:
+        request = AsyncMock(
+            side_effect=ApiError(
+                "E-mail ou senha inválidos.",
+                code="unauthorized",
+                status_code=401,
+                response_json={
+                    "error": {
+                        "message": "E-mail ou senha inválidos.",
+                        "password": "secret-password",
+                        "authToken": "secret-token",
+                    }
+                },
+                request_url="https://xano.example.test/api:auth/auth/login",
+            )
+        )
+        output = StringIO()
+        expected_error = (
+            'Falha no login: HTTP 401. Resposta JSON do Xano: '
+            '{"error": {"message": "E-mail ou senha inválidos.", '
+            '"password": "[REDACTED]", "authToken": "[REDACTED]"}}'
+        )
+        with (
+            patch("app_barbearia.xano_repository.request_json", new=request),
+            redirect_stdout(output),
+            self.assertRaisesRegex(MockFailure, "Falha no login: HTTP 401") as raised,
+        ):
+            await XanoRepository().authenticate(
+                "cliente@example.test",
+                "secret-password",
+            )
+
+        diagnostic = output.getvalue()
+        self.assertIn("HTTP 401", diagnostic)
+        self.assertIn("https://xano.example.test/api:auth/auth/login", diagnostic)
+        self.assertIn("E-mail ou senha inválidos.", diagnostic)
+        self.assertNotIn("secret-password", diagnostic)
+        self.assertNotIn("secret-token", diagnostic)
+        self.assertEqual(str(raised.exception), expected_error)
+
     async def test_backend_errors_keep_conflict_status_and_do_not_fake_success(self) -> None:
         request = AsyncMock(
             side_effect=ApiError(
@@ -97,6 +166,24 @@ class XanoRepositoryTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(raised.exception.code, "appointment_conflict")
         self.assertEqual(raised.exception.status_code, 409)
+
+    async def test_rate_limit_error_is_localized_for_all_repository_calls(self) -> None:
+        request = AsyncMock(
+            side_effect=ApiError(
+                "Too many requests",
+                code="rate_limit",
+                status_code=429,
+            )
+        )
+        with patch("app_barbearia.xano_repository.request_json", new=request):
+            with self.assertRaises(MockFailure) as raised:
+                await XanoRepository().services()
+
+        self.assertEqual(raised.exception.status_code, 429)
+        self.assertEqual(
+            str(raised.exception),
+            "Muitas consultas seguidas. Aguarde alguns segundos e tente novamente.",
+        )
 
     async def test_profile_update_does_not_send_identity_or_role(self) -> None:
         current_user = {
@@ -356,13 +443,21 @@ class XanoRepositoryTests(unittest.IsolatedAsyncioTestCase):
         statuses = {
             "pending": "pending",
             "pendente": "pending",
+            "PENDING": "pending",
+            "PENDENTE": "pending",
             "confirmed": "confirmed",
             "confirmado": "confirmed",
+            "CONFIRMED": "confirmed",
+            "CONFIRMADO": "confirmed",
             "cancelled": "cancelled",
             "cancelado": "cancelled",
+            "CANCELLED": "cancelled",
+            "CANCELADO": "cancelled",
             "completed": "completed",
             "concluido": "completed",
             "concluído": "completed",
+            "COMPLETED": "completed",
+            "CONCLUÍDO": "completed",
         }
 
         for raw_status, expected in statuses.items():
@@ -371,6 +466,145 @@ class XanoRepositoryTests(unittest.IsolatedAsyncioTestCase):
                     self._appointment_payload(status=raw_status)
                 )
                 self.assertEqual(appointment["status"], expected)
+
+    def test_completed_appointment_uses_snapshot_price_and_sao_paulo_start_date(
+        self,
+    ) -> None:
+        appointment = _appointment(
+            {
+                **self._appointment_payload(status="completed"),
+                "price_snapshot": "125.50",
+                "start_time": "2026-11-01T03:00:00Z",
+            }
+        )
+
+        self.assertEqual(appointment["date"], "2026-11-01")
+        self.assertEqual(appointment["time"], "00:00")
+        self.assertEqual(appointment["status"], "completed")
+        self.assertEqual(appointment["price_cents"], 12550)
+        self.assertEqual(appointment["price_display"], "R$ 125,50")
+
+    async def test_admin_appointments_requests_local_date_range_and_maps_snapshots(
+        self,
+    ) -> None:
+        response = {
+            "items": [
+                {
+                    **self._appointment_payload(),
+                    "price_snapshot": "125.50",
+                    "start_time": "2026-11-01T03:00:00-03:00",
+                }
+            ]
+        }
+        request = AsyncMock(return_value=response)
+
+        with patch("app_barbearia.xano_repository.request_json", new=request):
+            appointments = await XanoRepository("session-token").admin_appointments(
+                from_date="2026-11-01",
+                to_date="2026-11-30",
+                status="completed",
+            )
+
+        self.assertEqual(
+            request.await_args.args[:2],
+            ("GET", "admin/appointments"),
+        )
+        self.assertEqual(
+            request.await_args.kwargs["params"],
+            {
+                "status": "completed",
+                "from": "2026-11-01",
+                "to": "2026-11-30",
+            },
+        )
+        self.assertEqual(appointments[0]["date"], "2026-11-01")
+        self.assertEqual(appointments[0]["price_cents"], 12550)
+        self.assertEqual(appointments[0]["service_title"], "Corte")
+        self.assertEqual(appointments[0]["status"], "completed")
+
+    async def test_admin_appointments_with_no_status_filter_omits_status_param(
+        self,
+    ) -> None:
+        request = AsyncMock(
+            return_value={"items": [self._appointment_payload()]}
+        )
+
+        with (
+            patch("app_barbearia.xano_repository.request_json", new=request),
+            self.assertNoLogs("app_barbearia.xano_repository", level="WARNING"),
+        ):
+            appointments = await XanoRepository().admin_appointments(status=None)
+
+        self.assertEqual(request.await_args.kwargs["params"], {})
+        self.assertEqual(appointments[0]["status"], "pending")
+
+    async def test_barber_appointments_preserve_status_returned_by_role_endpoint(
+        self,
+    ) -> None:
+        record = {
+            **self._appointment_payload(status="completed"),
+            "client_name": "Cliente",
+        }
+        request = AsyncMock(return_value={"items": [record]})
+
+        with patch("app_barbearia.xano_repository.request_json", new=request):
+            appointments = await XanoRepository("session-token").barber_appointments(
+                "2",
+                date="2026-08-25",
+            )
+
+        self.assertEqual(request.await_args.args[:2], ("GET", "barber/appointments"))
+        self.assertEqual(appointments[0]["status"], "completed")
+
+    async def test_barber_appointments_pass_status_filter_and_infer_omitted_status(
+        self,
+    ) -> None:
+        record = self._appointment_payload()
+        request = AsyncMock(return_value={"items": [record]})
+
+        with (
+            patch("app_barbearia.xano_repository.request_json", new=request),
+            self.assertNoLogs("app_barbearia.xano_repository", level="WARNING"),
+        ):
+            appointments = await XanoRepository("session-token").barber_appointments(
+                "2",
+                date="2026-11-20",
+                status="completed",
+            )
+
+        self.assertEqual(
+            request.await_args.kwargs["params"],
+            {"date": "2026-11-20", "status": "completed"},
+        )
+        self.assertEqual(appointments[0]["status"], "completed")
+        self.assertEqual(appointments[0]["status_label"], "Concluído")
+
+    def test_nested_appointment_statuses_are_normalized(self) -> None:
+        statuses = (
+            ({"value": "COMPLETED"}, "completed"),
+            ({"status": {"label": "Concluído"}}, "completed"),
+            ({"STATUS": {"VALUE": "CONCLUÍDO"}}, "completed"),
+            ({"name": "CONFIRMADO"}, "confirmed"),
+            ({"value": "Pendente"}, "pending"),
+            ({"status": {"value": "CANCELADO"}}, "cancelled"),
+            ([{"name": "completed"}], "completed"),
+        )
+
+        for raw_status, expected in statuses:
+            with self.subTest(raw_status=raw_status):
+                appointment = _appointment(
+                    self._appointment_payload(status=raw_status)
+                )
+                self.assertEqual(appointment["status"], expected)
+                self.assertEqual(
+                    appointment["status_label"],
+                    {
+                        "pending": "Pendente",
+                        "confirmed": "Confirmado",
+                        "cancelled": "Cancelado",
+                        "completed": "Concluído",
+                    }[expected],
+                )
 
     def test_appointment_statuses_that_are_not_supported_default_to_pending(self) -> None:
         for raw_status in ("reserved", "", None, [], 123):

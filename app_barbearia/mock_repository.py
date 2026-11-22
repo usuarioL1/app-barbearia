@@ -11,6 +11,9 @@ from zoneinfo import ZoneInfo
 LOCAL_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 MOCK_NOW = datetime(2026, 8, 24, 16, 0, tzinfo=LOCAL_TIMEZONE)
 MOCK_SUCCESS_MESSAGE = "Ação simulada; nada foi salvo."
+RATE_LIMIT_MESSAGE = (
+    "Muitas consultas seguidas. Aguarde alguns segundos e tente novamente."
+)
 
 
 class UserRecord(TypedDict):
@@ -111,7 +114,7 @@ class MockFailure(Exception):
         code: str = "mock_operation_failed",
         status_code: int | None = None,
     ) -> None:
-        super().__init__(message)
+        super().__init__(RATE_LIMIT_MESSAGE if status_code == 429 else message)
         self.code = code
         self.status_code = status_code
 
@@ -546,12 +549,14 @@ class MockRepository:
         barber_id: str,
         *,
         date: str | None = None,
+        status: str | None = None,
     ) -> list[BarberAppointmentRecord]:
         records = [
             item
             for item in _APPOINTMENTS
             if item["barber_id"] == barber_id
             and (date is None or item["date"] == date)
+            and (status is None or item["status"] == status)
         ]
         return [
             barber_appointment_view(item)
@@ -565,7 +570,7 @@ class MockRepository:
         cls,
         *,
         barber_id: str = "",
-        status: str = "",
+        status: str | None = None,
         date: str = "",
         from_date: str = "",
         to_date: str = "",

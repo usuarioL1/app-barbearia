@@ -107,6 +107,20 @@ class ApiClientTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(raised.exception.code, "appointment_conflict")
         self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(
+            raised.exception.response_json,
+            {
+                "error": {
+                    "code": "appointment_conflict",
+                    "message": "Horário não disponível.",
+                    "details": {"token": "must-not-be-shown"},
+                }
+            },
+        )
+        self.assertEqual(
+            raised.exception.request_url,
+            "https://xano.example.test/appointments",
+        )
         self.assertNotIn("must-not-be-shown", str(raised.exception))
 
     async def test_invalid_success_response_is_not_treated_as_success(self) -> None:

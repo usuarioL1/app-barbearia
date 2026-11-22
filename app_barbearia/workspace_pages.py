@@ -1125,6 +1125,11 @@ def admin_console() -> rx.Component:
                     AppState.admin_revenue_display,
                     "circle_dollar_sign",
                 ),
+                _metric(
+                    "Atendimentos Concluídos no Mês",
+                    AppState.admin_completed_count,
+                    "circle_check",
+                ),
                 _metric("Clientes", AppState.admin_client_count, "users_round"),
                 _metric(
                     "Comparecimento",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar, cast
 from urllib.parse import urlparse
 
 import reflex as rx
@@ -16,6 +16,7 @@ from app_barbearia.mock_repository import (
     MockFailure,
     ServiceRecord,
     UserRecord,
+    RATE_LIMIT_MESSAGE,
     barber_appointment_view,
 )
 from app_barbearia.xano_repository import XanoRepository, repository_for, xano_enabled
@@ -50,6 +51,11 @@ _MONTH_NAMES = (
     "Dezembro",
 )
 _INITIAL_TODAY = date.today()
+_AppointmentStatusRecord = TypeVar(
+    "_AppointmentStatusRecord",
+    AppointmentRecord,
+    BarberAppointmentRecord,
+)
 
 
 def _format_brazilian_date(value: str) -> str:
@@ -62,25 +68,80 @@ def _format_brazilian_date(value: str) -> str:
         return value
 
 
-async def _monthly_revenue_series(
-    anchor_month: date,
-    repository: Any,
-) -> list[dict[str, str]]:
-    months = []
-    year, month = anchor_month.year, anchor_month.month
-    for _ in range(6):
-        months.append(date(year, month, 1))
-        month -= 1
-        if month == 0:
-            year -= 1
-            month = 12
+def _report_month_window(anchor_month: date) -> tuple[str, str]:
+    month_index = anchor_month.year * 12 + anchor_month.month - 1
+    first_month_index = month_index - 5
+    first_month = date(
+        first_month_index // 12,
+        first_month_index % 12 + 1,
+        1,
+    )
+    next_month = date(
+        anchor_month.year + (anchor_month.month == 12),
+        anchor_month.month % 12 + 1,
+        1,
+    )
+    return first_month.isoformat(), (next_month - timedelta(days=1)).isoformat()
 
+
+def _completed_appointment_revenue(
+    appointments: list[AppointmentRecord],
+    period: Literal["day", "month"],
+    selected_date: str,
+) -> int:
+    return sum(
+        appointment["price_cents"]
+        for appointment in _completed_appointments(
+            appointments,
+            period,
+            selected_date,
+        )
+    )
+
+
+def _completed_appointments(
+    appointments: list[AppointmentRecord],
+    period: Literal["day", "month"],
+    selected_date: str,
+) -> list[AppointmentRecord]:
+    return [
+        appointment
+        for appointment in appointments
+        if appointment["status"] == "completed"
+        and (
+            appointment["date"] == selected_date
+            if period == "day"
+            else appointment["date"].startswith(selected_date[:7])
+        )
+    ]
+
+
+def _attendance_rate_display(completed_count: int, cancelled_count: int) -> str:
+    finished_count = completed_count + cancelled_count
+    if finished_count == 0:
+        return "—"
+    return f"{round(completed_count / finished_count * 100)}%"
+
+
+def _monthly_revenue_series(
+    anchor_month: date,
+    appointments: list[AppointmentRecord],
+) -> list[dict[str, str]]:
+    month_index = anchor_month.year * 12 + anchor_month.month - 1
+    months = [
+        date((month_index + offset) // 12, (month_index + offset) % 12 + 1, 1)
+        for offset in range(-5, 1)
+    ]
     values = [
         (
             _MONTH_LABELS[item.month - 1],
-            await repository.revenue("month", item.isoformat()),
+            _completed_appointment_revenue(
+                appointments,
+                "month",
+                item.isoformat(),
+            ),
         )
-        for item in reversed(months)
+        for item in months
     ]
     maximum = max((value for _, value in values), default=0)
     return [
@@ -117,6 +178,42 @@ def _appointments_for_date(
     selected_date: str,
 ) -> list[AppointmentRecord]:
     return [item for item in appointments if item["date"] == selected_date]
+
+
+def _reconcile_missing_appointment_statuses(
+    appointments: list[_AppointmentStatusRecord],
+    filtered_appointments: dict[str, list[_AppointmentStatusRecord]],
+) -> list[_AppointmentStatusRecord]:
+    status_presentation = {
+        "pending": ("Pendente", "#d6a64f"),
+        "confirmed": ("Confirmado", "#54a86b"),
+        "cancelled": ("Cancelado", "#d9776b"),
+        "completed": ("Concluído", "#aaa69d"),
+    }
+    known_statuses = {
+        appointment["id"]: status
+        for status, records in filtered_appointments.items()
+        for appointment in records
+    }
+    reconciled: list[_AppointmentStatusRecord] = []
+    for appointment in appointments:
+        existing_status = appointment["status"]
+        if existing_status not in status_presentation:
+            existing_status = "pending"
+        status = known_statuses.get(appointment["id"], existing_status)
+        status_label, status_color = status_presentation[status]
+        reconciled.append(
+            cast(
+                _AppointmentStatusRecord,
+                {
+                    **appointment,
+                    "status": status,
+                    "status_label": status_label,
+                    "status_color": status_color,
+                },
+            )
+        )
+    return reconciled
 
 
 def _filter_admin_clients(
@@ -166,11 +263,8 @@ async def _ensure_authenticated(
     state: Any,
     allowed_roles: set[str],
 ) -> tuple[bool, rx.event.EventSpec | None]:
-    if not xano_enabled():
-        return True, None
-
     token = getattr(state, "_auth_token", "")
-    if not token:
+    if not xano_enabled() or not token:
         redirect = rx.redirect("/login")
         failure = MockFailure(
             "Entre para continuar.",
@@ -211,12 +305,12 @@ class AppState(rx.State):
     is_loading: bool = False
     error_message: str = ""
     success_message: str = ""
-    current_user_id: str = "client-lucas"
-    user_name: str = "Lucas"
-    greeting_name: str = "Lucas"
-    user_email: str = "lucas@email.com"
-    user_phone: str = "(11) 98765-4321"
-    user_role: str = "client"
+    current_user_id: str = ""
+    user_name: str = ""
+    greeting_name: str = ""
+    user_email: str = ""
+    user_phone: str = ""
+    user_role: str = ""
     is_authenticated: bool = False
 
     login_email: str = ""
@@ -234,9 +328,9 @@ class AppState(rx.State):
     is_reset_flow: bool = False
     recovery_email: str = ""
 
-    profile_name: str = "Lucas"
-    profile_email: str = "lucas@email.com"
-    profile_phone: str = "(11) 98765-4321"
+    profile_name: str = ""
+    profile_email: str = ""
+    profile_phone: str = ""
     profile_avatar_url: str = ""
     security_current_password: str = ""
     security_new_password: str = ""
@@ -315,6 +409,8 @@ class AppState(rx.State):
     admin_week_days: list[dict[str, str]] = []
     admin_dashboard_appointments: list[AppointmentRecord] = []
     admin_revenue_cents: int = 0
+    admin_completed_count: int = 0
+    admin_cancelled_count: int = 0
     admin_revenue_series: list[dict[str, str]] = []
     admin_report_period: Literal["day", "month"] = "month"
     admin_report_date: str = _INITIAL_TODAY.replace(day=1).isoformat()
@@ -416,17 +512,10 @@ class AppState(rx.State):
 
     @rx.var
     def admin_attendance_display(self) -> str:
-        finished = sum(
-            item["status"] in {"completed", "cancelled"}
-            for item in self.admin_dashboard_appointments
+        return _attendance_rate_display(
+            self.admin_completed_count,
+            self.admin_cancelled_count,
         )
-        completed = sum(
-            item["status"] == "completed"
-            for item in self.admin_dashboard_appointments
-        )
-        if finished == 0:
-            return "—"
-        return f"{completed / finished:.0%}"
 
     @rx.var
     def admin_report_revenue_display(self) -> str:
@@ -457,7 +546,10 @@ class AppState(rx.State):
     def _set_failure(self, error: MockFailure) -> None:
         if error.status_code == 401:
             _clear_authenticated_session(self)
-        self.error_message = str(error)
+        if error.status_code == 429:
+            self.error_message = RATE_LIMIT_MESSAGE
+        else:
+            self.error_message = str(error)
 
     @rx.event
     def set_login_email(self, value: str) -> None:
@@ -993,9 +1085,28 @@ class AppState(rx.State):
             return
         self._begin_request()
         try:
-            appointments = await _repository_for(self).barber_appointments(
+            repository = _repository_for(self)
+            appointments = await repository.barber_appointments(
                 self.barber_id,
                 date=selected_date,
+            )
+            status_appointments = {
+                known_status: await repository.barber_appointments(
+                    self.barber_id,
+                    date=selected_date,
+                    status=known_status,
+                )
+                for known_status in ("completed", "confirmed", "cancelled")
+            }
+            appointment_ids = {item["id"] for item in appointments}
+            if appointment_ids and all(
+                {item["id"] for item in filtered_appointments} == appointment_ids
+                for filtered_appointments in status_appointments.values()
+            ):
+                status_appointments = {}
+            appointments = _reconcile_missing_appointment_statuses(
+                appointments,
+                status_appointments,
             )
         except MockFailure as error:
             self._set_failure(error)
@@ -1084,13 +1195,28 @@ class AppState(rx.State):
         range_end = week_dates[-1]
         self._begin_request()
         try:
-            appointments = await _repository_for(self).admin_appointments(
+            repository = _repository_for(self)
+            appointments = await repository.admin_appointments(
                 barber_id=barber_id,
                 status=status,
                 from_date=range_start.isoformat(),
                 to_date=range_end.isoformat(),
             )
-            barbers = await _repository_for(self).barbers()
+            if not status:
+                status_appointments = {
+                    known_status: await repository.admin_appointments(
+                        barber_id=barber_id,
+                        status=known_status,
+                        from_date=range_start.isoformat(),
+                        to_date=range_end.isoformat(),
+                    )
+                    for known_status in ("completed", "confirmed", "cancelled")
+                }
+                appointments = _reconcile_missing_appointment_statuses(
+                    appointments,
+                    status_appointments,
+                )
+            barbers = await repository.barbers()
         except MockFailure as error:
             self._set_failure(error)
         else:
@@ -1236,14 +1362,59 @@ class AppState(rx.State):
             return
         self.admin_date = date.today().isoformat()
         self._begin_request()
+        anchor_month = date.fromisoformat(self.admin_date).replace(day=1)
+        from_date, to_date = _report_month_window(anchor_month)
+        next_month = date(
+            anchor_month.year + (anchor_month.month == 12),
+            anchor_month.month % 12 + 1,
+            1,
+        )
+        month_end = (next_month - timedelta(days=1)).isoformat()
         try:
-            appointments = await _repository_for(self).admin_appointments(
-                date=self.admin_date
+            repository = _repository_for(self)
+            completed_appointments = await repository.admin_appointments(
+                from_date=from_date,
+                to_date=to_date,
+                status="completed",
             )
+            cancelled_appointments = await repository.admin_appointments(
+                from_date=anchor_month.isoformat(),
+                to_date=month_end,
+                status="cancelled",
+            )
+            recent_appointments = _appointments_for_date(
+                completed_appointments,
+                self.admin_date,
+            )
+            for status in ("pending", "confirmed", "cancelled"):
+                recent_appointments.extend(
+                    await repository.admin_appointments(
+                        date=self.admin_date,
+                        status=status,
+                    )
+                )
+            recent_appointments.sort(key=lambda item: (item["date"], item["time"]))
         except MockFailure as error:
             self._set_failure(error)
         else:
-            self.admin_dashboard_appointments = appointments
+            self.admin_dashboard_appointments = recent_appointments
+            self.admin_revenue_cents = _completed_appointment_revenue(
+                completed_appointments,
+                "month",
+                self.admin_date,
+            )
+            self.admin_completed_count = len(
+                _completed_appointments(
+                    completed_appointments,
+                    "month",
+                    self.admin_date,
+                )
+            )
+            self.admin_cancelled_count = len(cancelled_appointments)
+            self.admin_revenue_series = _monthly_revenue_series(
+                anchor_month,
+                completed_appointments,
+            )
 
         try:
             clients = await _repository_for(self).clients()
@@ -1251,26 +1422,6 @@ class AppState(rx.State):
             self._set_failure(error)
         else:
             self.clients = clients
-
-        try:
-            revenue = await _repository_for(self).revenue(
-                "month",
-                f"{self.admin_date[:7]}-01",
-            )
-        except MockFailure as error:
-            self._set_failure(error)
-        else:
-            self.admin_revenue_cents = revenue
-
-        try:
-            revenue_series = await _monthly_revenue_series(
-                date.fromisoformat(self.admin_date).replace(day=1),
-                _repository_for(self),
-            )
-        except MockFailure as error:
-            self._set_failure(error)
-        else:
-            self.admin_revenue_series = revenue_series
         finally:
             self._end_request()
 
@@ -1337,6 +1488,19 @@ class AppState(rx.State):
         finally:
             self._end_request()
 
+    @rx.event
+    async def load_admin_users(self) -> None:
+        allowed, _ = await _ensure_authenticated(self, {"admin"})
+        if not allowed:
+            return
+        self._begin_request()
+        try:
+            self.users = await _repository_for(self).users()
+        except MockFailure as error:
+            self._set_failure(error)
+        finally:
+            self._end_request()
+
     async def _run_admin_mutation(
         self,
         entity: str,
@@ -1389,32 +1553,31 @@ class AppState(rx.State):
             self.error_message = "Informe uma data válida para o relatório."
             self.success_message = ""
             return
+        self.admin_report_period = period
+        self.admin_report_date = selected_date
         self._begin_request()
         try:
-            revenue = await _repository_for(self).revenue(
+            anchor_month = date.fromisoformat(selected_date).replace(day=1)
+            from_date, to_date = _report_month_window(anchor_month)
+            appointments = await _repository_for(self).admin_appointments(
+                from_date=from_date,
+                to_date=to_date,
+                status="completed",
+            )
+            revenue_series = _monthly_revenue_series(
+                anchor_month,
+                appointments,
+            )
+            completed = _completed_appointments(
+                appointments,
                 period,
                 selected_date,
             )
-            revenue_series = await _monthly_revenue_series(
-                date.fromisoformat(selected_date).replace(day=1),
-                _repository_for(self),
+            revenue = _completed_appointment_revenue(
+                appointments,
+                period,
+                selected_date,
             )
-            appointments = await _repository_for(self).admin_appointments()
-            if period == "day":
-                appointments = [
-                    item
-                    for item in appointments
-                    if item["date"] == selected_date
-                ]
-            else:
-                appointments = [
-                    item
-                    for item in appointments
-                    if item["date"].startswith(selected_date[:7])
-                ]
-            completed = [
-                item for item in appointments if item["status"] == "completed"
-            ]
             services = {
                 item["service_title"]: sum(
                     entry["service_title"] == item["service_title"]
@@ -1425,8 +1588,6 @@ class AppState(rx.State):
         except MockFailure as error:
             self._set_failure(error)
         else:
-            self.admin_report_period = period
-            self.admin_report_date = selected_date
             self.admin_report_revenue_cents = revenue
             self.admin_report_completed_count = len(completed)
             service_summary = [
@@ -1956,12 +2117,25 @@ class AppState(rx.State):
             self.success_message = ""
             self._login_password = ""
             return
+        if not xano_enabled():
+            _clear_authenticated_session(self)
+            self.error_message = (
+                "A API do Xano não está configurada. Verifique "
+                "XANO_API_BASE_URL e BARBERFLOW_MODE."
+            )
+            self.success_message = ""
+            self._login_password = ""
+            return rx.redirect("/login")
         self._begin_request()
         try:
             result = await _repository_for(self).authenticate(email, password)
         except MockFailure as error:
             _clear_authenticated_session(self)
-            self._set_failure(error)
+            if error.status_code in {401, 403}:
+                self.error_message = "E-mail ou senha inválidos."
+                self.success_message = ""
+            else:
+                self._set_failure(error)
         else:
             self._present_user(result.data)
             self._auth_token = getattr(result, "token", "")
@@ -2006,6 +2180,13 @@ class AppState(rx.State):
             self._signup_password = ""
             self._signup_password_confirmation = ""
             return
+        if not xano_enabled():
+            _clear_authenticated_session(self)
+            self.error_message = "O cadastro exige uma conta real na API do Xano."
+            self.success_message = ""
+            self._signup_password = ""
+            self._signup_password_confirmation = ""
+            return rx.redirect("/login")
         self._begin_request()
         try:
             result = await _repository_for(self).signup(

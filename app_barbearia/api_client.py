@@ -13,10 +13,14 @@ class ApiError(Exception):
         *,
         code: str = "api_error",
         status_code: int | None = None,
+        response_json: Any = None,
+        request_url: str = "",
     ) -> None:
         super().__init__(message)
         self.code = code
         self.status_code = status_code
+        self.response_json = response_json
+        self.request_url = request_url
 
 
 def _api_base_url() -> str:
@@ -37,10 +41,11 @@ def _api_base_url() -> str:
     return base_url
 
 
-def _error_details(response: httpx.Response) -> tuple[str, str]:
-    try:
-        payload = response.json()
-    except ValueError:
+def _error_details(
+    response: httpx.Response,
+    payload: Any = None,
+) -> tuple[str, str]:
+    if payload is None:
         return "request_failed", "Não foi possível concluir a solicitação."
 
     if not isinstance(payload, dict):
@@ -102,8 +107,18 @@ async def request_json(
         ) from exc
 
     if response.is_error:
-        code, message = _error_details(response)
-        raise ApiError(message, code=code, status_code=response.status_code)
+        try:
+            response_json = response.json()
+        except ValueError:
+            response_json = None
+        code, message = _error_details(response, response_json)
+        raise ApiError(
+            message,
+            code=code,
+            status_code=response.status_code,
+            response_json=response_json,
+            request_url=str(response.request.url),
+        )
 
     if response.status_code == 204:
         return None

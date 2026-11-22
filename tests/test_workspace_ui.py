@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import reflex as rx
 
+from app_barbearia.app_barbearia import app
 from app_barbearia.customer_portal import (
     _appointment_item,
     _service_image_name,
@@ -14,6 +15,7 @@ from app_barbearia.ui import (
     public_layout,
     role_layout,
 )
+from app_barbearia.workspace_pages import admin_console, admin_reports_page
 from app_barbearia.xano_repository import XanoRepository, repository_for
 
 
@@ -60,6 +62,26 @@ class UnpublishedEndpointMessageTests(unittest.TestCase):
     def test_xano_mode_selects_xano_without_demo_fallback(self) -> None:
         with patch.dict("os.environ", {"BARBERFLOW_MODE": "xano"}):
             self.assertIsInstance(repository_for(), XanoRepository)
+
+    def test_admin_pages_only_load_user_records_when_needed(self) -> None:
+        users_page = app._unevaluated_pages["admin/usuarios"]
+        settings_page = app._unevaluated_pages["admin/configuracoes"]
+
+        self.assertEqual(users_page.on_load.fn.__name__, "load_admin_users")
+        self.assertIsNone(settings_page.on_load)
+
+    def test_admin_reports_controls_are_unbounded_and_reload_on_change(self) -> None:
+        page = str(admin_reports_page())
+
+        self.assertIn("set_admin_report_period", page)
+        self.assertIn("set_admin_report_date", page)
+        self.assertNotIn("max=", page)
+
+    def test_admin_dashboard_includes_completed_monthly_appointment_count(self) -> None:
+        page = str(admin_console())
+
+        self.assertIn("Atendimentos Conclu\\u00eddos no M\\u00eas", page)
+        self.assertIn("admin_completed_count", page)
 
 
 class ServiceImageMappingTests(unittest.TestCase):

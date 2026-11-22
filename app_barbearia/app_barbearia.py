@@ -141,7 +141,7 @@ app.add_page(
     admin_users_page,
     route="/admin/usuarios",
     title="BarberFlow | Usuários",
-    on_load=AppState.load_admin_data,
+    on_load=AppState.load_admin_users,
 )
 app.add_page(
     admin_settings_page,

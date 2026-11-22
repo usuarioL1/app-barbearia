@@ -1,6 +1,10 @@
 import os
+from pathlib import Path
 
 import reflex as rx
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().with_name(".env"), override=False)
 
 if (
     os.environ.get("BARBERFLOW_MODE", "").casefold() == "xano"

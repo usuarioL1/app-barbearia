@@ -4,6 +4,7 @@ query "barber/appointments" verb=GET {
 
   input {
     text date
+    text status?
   }
 
   stack {
@@ -48,7 +49,7 @@ query "barber/appointments" verb=GET {
       join = {
         client: {table: "user", where: $db.appointment.client_id == $db.client.id}
       }
-      where = $db.appointment.barber_id == $barber.id && $db.appointment.start_time >= $day_start && $db.appointment.start_time < $next_day_start
+      where = $db.appointment.barber_id == $barber.id && $db.appointment.start_time >= $day_start && $db.appointment.start_time < $next_day_start && $db.appointment.status ==? $input.status
       sort = {start_time: "asc"}
       eval = {
         client_name: $db.client.name

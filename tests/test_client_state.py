@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 from app_barbearia.mock_repository import MockFailure, MockRepository
 from app_barbearia.state import (
     AppState,
+    _attendance_rate_display,
     _appointments_for_date,
     _filter_admin_clients,
 )
@@ -42,6 +43,9 @@ class ClientStateHarness:
         self.admin_appointments = []
         self.admin_week_days = []
         self.admin_dashboard_appointments = []
+        self.admin_completed_count = 0
+        self.admin_cancelled_count = 0
+        self.users = []
         self.clients = []
         self.admin_client_search = ""
         self.admin_client_form_open = False
@@ -89,7 +93,10 @@ class ClientStateHarness:
         self.is_loading = False
 
     def _set_failure(self, error: MockFailure) -> None:
-        self.error_message = str(error)
+        AppState._set_failure(self, error)
+
+    async def _load_admin_reports(self, **kwargs) -> None:
+        await AppState._load_admin_reports(self, **kwargs)
 
     def _split_customer_appointments(self, appointments: list) -> None:
         self.customer_appointments = appointments
@@ -121,6 +128,12 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         environment.start()
         self.addCleanup(environment.stop)
 
+    def _allow_authenticated_test_state(self):
+        return patch(
+            "app_barbearia.state._ensure_authenticated",
+            new=AsyncMock(return_value=(True, None)),
+        )
+
     async def test_barber_workspace_loads_machine_today(self) -> None:
         class MachineDate(date):
             @classmethod
@@ -130,6 +143,7 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         state = ClientStateHarness()
         state._load_barber_appointments = AsyncMock()
         with (
+            self._allow_authenticated_test_state(),
             patch("app_barbearia.state.date", MachineDate),
         ):
             await AppState.load_barber_workspace.fn(state)
@@ -145,6 +159,7 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         state = ClientStateHarness()
         state._load_admin_agenda = AsyncMock()
         with (
+            self._allow_authenticated_test_state(),
             patch("app_barbearia.state.date", MachineDate),
         ):
             await AppState.load_admin_agenda.fn(state)
@@ -163,6 +178,7 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
 
         state = ClientStateHarness()
         with (
+            self._allow_authenticated_test_state(),
             patch("app_barbearia.state.date", MachineDate),
             patch.object(
                 MockRepository,
@@ -223,6 +239,38 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         appointments.assert_not_awaited()
         self.assertEqual(state.error_message, "Entre para continuar.")
         self.assertEqual(state.current_user_id, "")
+        self.assertIsNotNone(redirect)
+
+    async def test_demo_mode_does_not_authenticate_the_mock_user(self) -> None:
+        state = ClientStateHarness()
+
+        with (
+            patch.object(
+                MockRepository,
+                "customer_appointments",
+                new=AsyncMock(),
+            ) as appointments,
+            patch.object(
+                MockRepository,
+                "authenticate",
+                new=AsyncMock(),
+            ) as authenticate,
+        ):
+            redirect = await AppState.load_client_portal.fn(state)
+            state.login_email = "lucas@email.com"
+            state._login_password = "demo-password"
+            await AppState.login.fn(state)
+
+        appointments.assert_not_awaited()
+        authenticate.assert_not_awaited()
+        self.assertFalse(state.is_authenticated)
+        self.assertEqual(state.current_user_id, "")
+        self.assertEqual(state.user_email, "")
+        self.assertIn("Xano", state.error_message)
+        self.assertNotIn(
+            "A autenticação exige uma conta real na API do Xano.",
+            state.error_message,
+        )
         self.assertIsNotNone(redirect)
 
     async def test_authenticated_portal_load_uses_xano_with_private_session(self) -> None:
@@ -409,7 +457,8 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         state.current_user_id = "42"
         state.is_authenticated = True
         failure = MockFailure(
-            "E-mail ou senha inválidos.",
+            'Falha no login: HTTP 401. Resposta JSON do Xano: '
+            '{"error": {"message": "E-mail ou senha inválidos."}}',
             code="unauthorized",
             status_code=401,
         )
@@ -417,7 +466,10 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         repository.authenticate = AsyncMock(side_effect=failure)
         repository.signup = AsyncMock(side_effect=failure)
 
-        with patch("app_barbearia.state._repository_for", return_value=repository):
+        with (
+            patch("app_barbearia.state.xano_enabled", return_value=True),
+            patch("app_barbearia.state._repository_for", return_value=repository),
+        ):
             await AppState.login.fn(state)
 
         self.assertEqual(state._auth_token, "")
@@ -435,13 +487,72 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         state.current_user_id = "42"
         state.is_authenticated = True
 
-        with patch("app_barbearia.state._repository_for", return_value=repository):
+        with (
+            patch("app_barbearia.state.xano_enabled", return_value=True),
+            patch("app_barbearia.state._repository_for", return_value=repository),
+        ):
             await AppState.signup.fn(state)
 
         self.assertEqual(state._auth_token, "")
         self.assertFalse(state.is_authenticated)
         self.assertEqual(state.current_user_id, "")
         self.assertEqual(state._signup_password, "")
+
+    async def test_login_401_and_403_use_generic_message_and_always_end_loading(self) -> None:
+        for status_code in (401, 403):
+            with self.subTest(status_code=status_code):
+                state = ClientStateHarness()
+                state.login_email = "admin@example.test"
+                state._login_password = "wrong-password"
+                repository = type("Repository", (), {})()
+                repository.authenticate = AsyncMock(
+                    side_effect=MockFailure(
+                        "technical response containing HTTP details",
+                        status_code=status_code,
+                    )
+                )
+                with (
+                    patch("app_barbearia.state.xano_enabled", return_value=True),
+                    patch("app_barbearia.state._repository_for", return_value=repository),
+                ):
+                    await AppState.login.fn(state)
+
+                self.assertEqual(state.error_message, "E-mail ou senha inválidos.")
+                self.assertFalse(state.is_loading)
+
+    async def test_login_429_uses_friendly_message_and_always_ends_loading(self) -> None:
+        state = ClientStateHarness()
+        state.login_email = "admin@example.test"
+        state._login_password = "valid-looking-password"
+        repository = type("Repository", (), {})()
+        repository.authenticate = AsyncMock(
+            side_effect=MockFailure("Too many requests", status_code=429)
+        )
+
+        with (
+            patch("app_barbearia.state.xano_enabled", return_value=True),
+            patch("app_barbearia.state._repository_for", return_value=repository),
+        ):
+            await AppState.login.fn(state)
+
+        self.assertEqual(
+            state.error_message,
+            "Muitas consultas seguidas. Aguarde alguns segundos e tente novamente.",
+        )
+        self.assertFalse(state.is_loading)
+
+    async def test_429_error_is_friendly_for_other_state_requests(self) -> None:
+        state = ClientStateHarness()
+
+        AppState._set_failure(
+            state,
+            MockFailure("Too many requests", status_code=429),
+        )
+
+        self.assertEqual(
+            state.error_message,
+            "Muitas consultas seguidas. Aguarde alguns segundos e tente novamente.",
+        )
 
     async def test_expired_session_is_cleared_when_profile_check_returns_401(self) -> None:
         state = ClientStateHarness()
@@ -519,10 +630,15 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
     async def test_barber_agenda_load_uses_the_current_barber_and_date(self) -> None:
         state = ClientStateHarness()
 
-        await AppState._load_barber_appointments(state, "2026-08-24")
+        with self._allow_authenticated_test_state():
+            await AppState._load_barber_appointments(state, "2026-08-24")
 
         self.assertEqual(state.barber_date, "2026-08-24")
         self.assertTrue(state.barber_appointments)
+        self.assertEqual(
+            {item["status"] for item in state.barber_appointments},
+            {"pending", "confirmed"},
+        )
         self.assertTrue(
             all(
                 "client_id" not in item and "client_email" not in item
@@ -530,6 +646,111 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
             )
         )
         self.assertFalse(state.is_loading)
+
+    async def test_barber_agenda_reconciles_completed_status_and_revenue(self) -> None:
+        state = ClientStateHarness()
+        all_appointments = [
+            {
+                "id": "completed-1",
+                "client_name": "Cliente",
+                "service_title": "Corte",
+                "price_cents": 4500,
+                "duration_minutes": 30,
+                "date": "2026-11-20",
+                "time": "09:00",
+                "status": "pending",
+                "date_display": "20/11/2026",
+                "status_label": "Pendente",
+                "status_color": "#d6a64f",
+                "price_display": "R$ 45,00",
+            },
+            {
+                "id": "pending-1",
+                "client_name": "Outro Cliente",
+                "service_title": "Barba",
+                "price_cents": 3000,
+                "duration_minutes": 30,
+                "date": "2026-11-20",
+                "time": "10:00",
+                "status": "pending",
+                "date_display": "20/11/2026",
+                "status_label": "Pendente",
+                "status_color": "#d6a64f",
+                "price_display": "R$ 30,00",
+            },
+        ]
+        filtered_by_status = {
+            "completed": [dict(all_appointments[0], status="completed")],
+            "confirmed": [],
+            "cancelled": [],
+        }
+
+        async def appointments_for_query(barber_id, *, date=None, status=None):
+            if status:
+                return filtered_by_status[status]
+            return all_appointments
+
+        with (
+            self._allow_authenticated_test_state(),
+            patch.object(
+                MockRepository,
+                "barber_appointments",
+                new=AsyncMock(side_effect=appointments_for_query),
+            ) as load_appointments,
+        ):
+            await AppState._load_barber_appointments(state, "2026-11-20")
+
+        self.assertEqual(
+            {item["id"]: item["status"] for item in state.barber_appointments},
+            {"completed-1": "completed", "pending-1": "pending"},
+        )
+        self.assertEqual(
+            {item["id"]: item["status_label"] for item in state.barber_appointments},
+            {"completed-1": "Concluído", "pending-1": "Pendente"},
+        )
+        self.assertEqual(
+            {item["id"]: item["status_color"] for item in state.barber_appointments},
+            {"completed-1": "#aaa69d", "pending-1": "#d6a64f"},
+        )
+        self.assertEqual(
+            AppState.barber_revenue_display.fget(state),
+            "R$ 45,00",
+        )
+        self.assertEqual(load_appointments.await_count, 4)
+
+    async def test_barber_agenda_does_not_trust_ignored_status_filters(self) -> None:
+        state = ClientStateHarness()
+        appointment = {
+            "id": "appointment-1",
+            "client_name": "Cliente",
+            "service_title": "Corte",
+            "price_cents": 4500,
+            "duration_minutes": 30,
+            "date": "2026-11-20",
+            "time": "09:00",
+            "status": "pending",
+            "date_display": "20/11/2026",
+            "status_label": "Pendente",
+            "status_color": "#d6a64f",
+            "price_display": "R$ 45,00",
+        }
+
+        with (
+            self._allow_authenticated_test_state(),
+            patch.object(
+                MockRepository,
+                "barber_appointments",
+                new=AsyncMock(return_value=[appointment]),
+            ),
+        ):
+            await AppState._load_barber_appointments(state, "2026-11-20")
+
+        self.assertEqual(state.barber_appointments[0]["status"], "pending")
+        self.assertEqual(state.barber_appointments[0]["status_label"], "Pendente")
+        self.assertEqual(
+            AppState.barber_revenue_display.fget(state),
+            "R$ 0,00",
+        )
 
     async def test_barber_set_date_loads_selected_date(self) -> None:
         state = ClientStateHarness()
@@ -548,6 +769,7 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         }
 
         with (
+            self._allow_authenticated_test_state(),
             patch.object(
                 MockRepository,
                 "admin_appointments",
@@ -572,16 +794,90 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state.admin_filter_status, "pending")
         self.assertFalse(state.is_loading)
 
+    async def test_admin_all_statuses_reconciles_missing_status_without_detail_calls(
+        self,
+    ) -> None:
+        state = ClientStateHarness()
+        all_appointments = [
+            {"id": "completed-1", "date": "2026-08-24", "time": "09:00", "status": "pending"},
+            {"id": "confirmed-1", "date": "2026-08-24", "time": "10:00", "status": "pending"},
+            {"id": "cancelled-1", "date": "2026-08-24", "time": "11:00", "status": "pending"},
+            {"id": "pending-1", "date": "2026-08-24", "time": "12:00", "status": "pending"},
+        ]
+        filtered_by_status = {
+            "completed": [dict(all_appointments[0], status="completed")],
+            "confirmed": [dict(all_appointments[1], status="confirmed")],
+            "cancelled": [dict(all_appointments[2], status="cancelled")],
+        }
+
+        async def appointments_for_query(**filters):
+            requested_status = filters["status"]
+            if requested_status:
+                return filtered_by_status[requested_status]
+            return all_appointments
+
+        with (
+            self._allow_authenticated_test_state(),
+            patch.object(
+                MockRepository,
+                "admin_appointments",
+                new=AsyncMock(side_effect=appointments_for_query),
+            ) as load_appointments,
+            patch.object(MockRepository, "barbers", new=AsyncMock(return_value=[])),
+        ):
+            await AppState._load_admin_agenda(
+                state,
+                selected_date="2026-08-24",
+                barber_id="",
+                status="",
+            )
+
+        self.assertEqual(
+            {item["id"]: item["status"] for item in state.admin_appointments},
+            {
+                "completed-1": "completed",
+                "confirmed-1": "confirmed",
+                "cancelled-1": "cancelled",
+                "pending-1": "pending",
+            },
+        )
+        self.assertEqual(
+            {item["id"]: item["status_label"] for item in state.admin_appointments},
+            {
+                "completed-1": "Concluído",
+                "confirmed-1": "Confirmado",
+                "cancelled-1": "Cancelado",
+                "pending-1": "Pendente",
+            },
+        )
+        self.assertEqual(
+            {item["id"]: item["status_color"] for item in state.admin_appointments},
+            {
+                "completed-1": "#aaa69d",
+                "confirmed-1": "#54a86b",
+                "cancelled-1": "#d9776b",
+                "pending-1": "#d6a64f",
+            },
+        )
+        self.assertEqual(load_appointments.await_count, 4)
+        self.assertEqual(
+            [call.kwargs["status"] for call in load_appointments.await_args_list],
+            ["", "completed", "confirmed", "cancelled"],
+        )
+
     async def test_admin_filter_failure_keeps_previous_filter_and_results(self) -> None:
         state = ClientStateHarness()
         appointment = {"id": "appointment-old", "status": "confirmed"}
         state.admin_appointments = [appointment]
         failure = MockFailure("Agenda indisponível.")
 
-        with patch.object(
-            MockRepository,
-            "admin_appointments",
-            new=AsyncMock(side_effect=failure),
+        with (
+            self._allow_authenticated_test_state(),
+            patch.object(
+                MockRepository,
+                "admin_appointments",
+                new=AsyncMock(side_effect=failure),
+            ),
         ):
             await AppState._load_admin_agenda(
                 state,
@@ -636,23 +932,154 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(_appointments_for_date(appointments, "2026-08-24"), [])
 
-    async def test_admin_dashboard_passes_repository_to_monthly_series(self) -> None:
-        state = ClientStateHarness()
-        series = AsyncMock(return_value=[])
+    async def test_admin_dashboard_calculates_revenue_from_appointment_snapshots(self) -> None:
+        class MachineDate(date):
+            @classmethod
+            def today(cls) -> date:
+                return cls(2026, 8, 24)
 
+        state = ClientStateHarness()
         with (
+            self._allow_authenticated_test_state(),
+            patch("app_barbearia.state.date", MachineDate),
+            patch.object(MockRepository, "clients", new=AsyncMock(return_value=[])),
             patch.object(
                 MockRepository,
                 "admin_appointments",
-                new=AsyncMock(return_value=[]),
-            ),
-            patch.object(MockRepository, "clients", new=AsyncMock(return_value=[])),
-            patch.object(MockRepository, "revenue", new=AsyncMock(return_value=0)),
-            patch("app_barbearia.state._monthly_revenue_series", new=series),
+                new=AsyncMock(wraps=MockRepository.admin_appointments),
+            ) as load_appointments,
         ):
             await AppState.load_admin_dashboard.fn(state)
 
-        series.assert_awaited_once_with(date.fromisoformat(state.admin_date).replace(day=1), MockRepository)
+        self.assertEqual(
+            [call.kwargs for call in load_appointments.await_args_list],
+            [
+                {
+                    "from_date": "2026-03-01",
+                    "to_date": "2026-08-31",
+                    "status": "completed",
+                },
+                {
+                    "from_date": "2026-08-01",
+                    "to_date": "2026-08-31",
+                    "status": "cancelled",
+                },
+                {"date": "2026-08-24", "status": "pending"},
+                {"date": "2026-08-24", "status": "confirmed"},
+                {"date": "2026-08-24", "status": "cancelled"},
+            ],
+        )
+        self.assertEqual(state.admin_revenue_cents, 11000)
+        self.assertEqual(state.admin_completed_count, 2)
+        self.assertEqual(state.admin_cancelled_count, 0)
+        self.assertTrue(state.admin_dashboard_appointments)
+        self.assertTrue(
+            all(item["date"] == "2026-08-24" for item in state.admin_dashboard_appointments)
+        )
+        self.assertEqual(state.admin_revenue_series[-1]["amount"], "11000")
+
+    def test_attendance_rate_uses_monthly_completed_and_cancelled_counts(self) -> None:
+        self.assertEqual(_attendance_rate_display(7, 3), "70%")
+        self.assertEqual(_attendance_rate_display(2, 1), "67%")
+        self.assertEqual(_attendance_rate_display(0, 0), "—")
+
+    async def test_admin_dashboard_uses_monthly_cancelled_appointments_for_attendance(
+        self,
+    ) -> None:
+        class MachineDate(date):
+            @classmethod
+            def today(cls) -> date:
+                return cls(2026, 8, 24)
+
+        completed = await MockRepository.admin_appointments(
+            from_date="2026-03-01",
+            to_date="2026-08-31",
+            status="completed",
+        )
+        original_admin_appointments = MockRepository.admin_appointments
+        cancelled = [{**completed[0], "date": "2026-08-20", "status": "cancelled"}]
+
+        async def appointments_for_query(**filters):
+            if filters["status"] == "cancelled":
+                return cancelled
+            return await original_admin_appointments(**filters)
+
+        state = ClientStateHarness()
+        with (
+            self._allow_authenticated_test_state(),
+            patch("app_barbearia.state.date", MachineDate),
+            patch.object(MockRepository, "clients", new=AsyncMock(return_value=[])),
+            patch.object(
+                MockRepository,
+                "admin_appointments",
+                new=AsyncMock(side_effect=appointments_for_query),
+            ) as load_appointments,
+        ):
+            await AppState.load_admin_dashboard.fn(state)
+
+        self.assertEqual(state.admin_completed_count, 2)
+        self.assertEqual(state.admin_cancelled_count, 1)
+        self.assertEqual(
+            _attendance_rate_display(
+                state.admin_completed_count,
+                state.admin_cancelled_count,
+            ),
+            "67%",
+        )
+        self.assertEqual(load_appointments.await_count, 5)
+
+    async def test_admin_users_loader_fetches_only_users_and_finalizes_loading(self) -> None:
+        state = ClientStateHarness()
+        users = [
+            {
+                "id": "admin-1",
+                "name": "Admin",
+                "email": "admin@example.test",
+                "phone": "",
+                "role": "admin",
+            }
+        ]
+        with (
+            self._allow_authenticated_test_state(),
+            patch.object(MockRepository, "users", new=AsyncMock(return_value=users)) as load_users,
+            patch.object(MockRepository, "clients", new=AsyncMock()) as load_clients,
+            patch.object(
+                MockRepository,
+                "admin_appointments",
+                new=AsyncMock(),
+            ) as load_appointments,
+            patch.object(MockRepository, "services", new=AsyncMock()) as load_services,
+            patch.object(MockRepository, "barbers", new=AsyncMock()) as load_barbers,
+        ):
+            await AppState.load_admin_users.fn(state)
+
+        load_users.assert_awaited_once()
+        load_clients.assert_not_awaited()
+        load_appointments.assert_not_awaited()
+        load_services.assert_not_awaited()
+        load_barbers.assert_not_awaited()
+        self.assertEqual(state.users, users)
+        self.assertFalse(state.is_loading)
+
+    async def test_admin_users_loader_finalizes_loading_after_rate_limit(self) -> None:
+        state = ClientStateHarness()
+        with (
+            self._allow_authenticated_test_state(),
+            patch.object(
+                MockRepository,
+                "users",
+                new=AsyncMock(
+                    side_effect=MockFailure("Too many requests", status_code=429)
+                ),
+            ),
+        ):
+            await AppState.load_admin_users.fn(state)
+
+        self.assertEqual(
+            state.error_message,
+            "Muitas consultas seguidas. Aguarde alguns segundos e tente novamente.",
+        )
+        self.assertFalse(state.is_loading)
 
     async def test_admin_day_navigation_moves_one_day_and_keeps_filters(self) -> None:
         state = ClientStateHarness()
@@ -726,12 +1153,13 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
             "admin_mutation",
             new=AsyncMock(side_effect=failure),
         ):
-            await AppState._run_admin_mutation(
-                state,
-                "service",
-                "deactivate",
-                {"id": "corte"},
-            )
+            with self._allow_authenticated_test_state():
+                await AppState._run_admin_mutation(
+                    state,
+                    "service",
+                    "deactivate",
+                    {"id": "corte"},
+                )
 
         self.assertEqual(state.admin_appointments, [appointment])
         self.assertEqual(state.success_message, "")
@@ -780,6 +1208,7 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         state = ClientStateHarness()
 
         with (
+            self._allow_authenticated_test_state(),
             patch.object(
                 MockRepository,
                 "admin_appointments",
@@ -907,17 +1336,18 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(
             MockRepository,
-            "revenue",
+            "admin_appointments",
             new=AsyncMock(side_effect=failure),
         ):
-            await AppState._load_admin_reports(
-                state,
-                period="day",
-                selected_date="2026-08-12",
-            )
+            with self._allow_authenticated_test_state():
+                await AppState._load_admin_reports(
+                    state,
+                    period="day",
+                    selected_date="2026-08-12",
+                )
 
-        self.assertEqual(state.admin_report_period, "month")
-        self.assertEqual(state.admin_report_date, "2026-08-01")
+        self.assertEqual(state.admin_report_period, "day")
+        self.assertEqual(state.admin_report_date, "2026-08-12")
         self.assertEqual(state.admin_report_revenue_cents, 11000)
         self.assertEqual(state.admin_report_completed_count, 2)
         self.assertEqual(
@@ -929,11 +1359,12 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
     async def test_admin_report_uses_only_completed_demo_appointments(self) -> None:
         state = ClientStateHarness()
 
-        await AppState._load_admin_reports(
-            state,
-            period="month",
-            selected_date="2026-08-01",
-        )
+        with self._allow_authenticated_test_state():
+            await AppState._load_admin_reports(
+                state,
+                period="month",
+                selected_date="2026-08-01",
+            )
 
         self.assertEqual(state.admin_report_revenue_cents, 11000)
         self.assertEqual(state.admin_report_completed_count, 2)
@@ -947,6 +1378,48 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(state.admin_report_revenue_series), 6)
         self.assertEqual(state.admin_report_revenue_series[-1]["amount"], "11000")
         self.assertIn("conic-gradient(", state.admin_report_service_gradient)
+
+    async def test_admin_report_date_change_recalculates_daily_metrics(self) -> None:
+        state = ClientStateHarness()
+        state.admin_report_period = "day"
+
+        with self._allow_authenticated_test_state():
+            await AppState.set_admin_report_date.fn(state, "2026-08-12")
+
+        self.assertEqual(state.admin_report_date, "2026-08-12")
+        self.assertEqual(state.admin_report_revenue_cents, 7000)
+        self.assertEqual(state.admin_report_completed_count, 1)
+        self.assertEqual(
+            state.admin_report_service_summary,
+            [{"title": "Combo", "count": "1", "share": "100%"}],
+        )
+        self.assertEqual(len(state.admin_report_revenue_series), 6)
+        self.assertEqual(state.admin_report_revenue_series[-1]["amount"], "11000")
+
+    async def test_admin_report_accepts_date_after_previous_calendar_cutoff(self) -> None:
+        state = ClientStateHarness()
+
+        with self._allow_authenticated_test_state():
+            await AppState.set_admin_report_date.fn(state, "2026-11-22")
+
+        self.assertEqual(state.admin_report_date, "2026-11-22")
+        self.assertEqual(state.error_message, "")
+
+    async def test_admin_report_period_change_recalculates_monthly_metrics(self) -> None:
+        state = ClientStateHarness()
+        state.admin_report_date = "2026-08-12"
+        state.admin_report_period = "day"
+
+        with self._allow_authenticated_test_state():
+            await AppState.set_admin_report_period.fn(state, "month")
+
+        self.assertEqual(state.admin_report_period, "month")
+        self.assertEqual(state.admin_report_revenue_cents, 11000)
+        self.assertEqual(state.admin_report_completed_count, 2)
+        self.assertEqual(
+            {item["title"] for item in state.admin_report_service_summary},
+            {"Corte Masculino", "Combo"},
+        )
 
 
 if __name__ == "__main__":

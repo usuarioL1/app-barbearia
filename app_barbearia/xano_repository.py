@@ -41,13 +41,17 @@ _STATUS_COLORS = {
 _STATUS_ALIASES = {
     "pending": "pending",
     "pendente": "pending",
+    "aguardando": "pending",
     "confirmed": "confirmed",
     "confirmado": "confirmed",
+    "confirmada": "confirmed",
     "cancelled": "cancelled",
     "canceled": "cancelled",
     "cancelado": "cancelled",
+    "cancelada": "cancelled",
     "completed": "completed",
     "concluido": "completed",
+    "concluida": "completed",
 }
 _logger = logging.getLogger(__name__)
 
@@ -278,29 +282,53 @@ def _local_start(record: Mapping[str, Any]) -> datetime:
     return start.astimezone(LOCAL_TIMEZONE)
 
 
-def _appointment(
-    record: Mapping[str, Any],
-) -> AppointmentRecord:
-    start = _local_start(record)
-    raw_status = record.get("status")
-    if isinstance(raw_status, str):
-        normalized_status = "".join(
+def _normalized_appointment_status(value: Any) -> str | None:
+    if isinstance(value, str):
+        normalized = "".join(
             character
-            for character in unicodedata.normalize(
-                "NFKD",
-                raw_status.strip().casefold(),
-            )
+            for character in unicodedata.normalize("NFKD", value.strip().casefold())
             if not unicodedata.combining(character)
         )
-        status = _STATUS_ALIASES.get(normalized_status)
-    else:
-        status = None
+        return _STATUS_ALIASES.get(normalized)
+    if isinstance(value, Mapping):
+        preferred_keys = ("status", "value", "name", "label", "title", "code")
+        normalized_keys = {
+            key.casefold(): nested_value
+            for key, nested_value in value.items()
+            if isinstance(key, str)
+        }
+        for key in preferred_keys:
+            if key in normalized_keys:
+                status = _normalized_appointment_status(normalized_keys[key])
+                if status is not None:
+                    return status
+        for key, nested_value in value.items():
+            if not isinstance(key, str) or key.casefold() not in preferred_keys:
+                status = _normalized_appointment_status(nested_value)
+                if status is not None:
+                    return status
+    elif isinstance(value, list):
+        for nested_value in value:
+            status = _normalized_appointment_status(nested_value)
+            if status is not None:
+                return status
+    return None
+
+
+def _appointment(
+    record: Mapping[str, Any],
+    *,
+    warn_on_missing_status: bool = True,
+) -> AppointmentRecord:
+    start = _local_start(record)
+    status = _normalized_appointment_status(record.get("status"))
     if status is None:
         status = "pending"
-        _logger.warning(
-            "Xano returned an empty or unsupported appointment status; "
-            "defaulting to pending."
-        )
+        if warn_on_missing_status or "status" in record:
+            _logger.warning(
+                "Xano returned an empty or unsupported appointment status; "
+                "defaulting to pending."
+            )
     cents = _price_cents(record)
     duration = _integer(record, "duration_minutes_snapshot")
     return {
@@ -328,6 +356,35 @@ def _appointment(
     }
 
 
+def _redact_auth_diagnostic(value: Any) -> Any:
+    sensitive_keys = {
+        "access_token",
+        "accesstoken",
+        "auth_token",
+        "authtoken",
+        "authorization",
+        "password",
+        "password_hash",
+        "passwordhash",
+        "refresh_token",
+        "refreshtoken",
+        "secret",
+        "token",
+    }
+    if isinstance(value, dict):
+        return {
+            key: (
+                "[REDACTED]"
+                if key.casefold().replace("-", "_") in sensitive_keys
+                else _redact_auth_diagnostic(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_auth_diagnostic(item) for item in value]
+    return value
+
+
 class XanoRepository:
     def __init__(self, token: str = "") -> None:
         self._token = token
@@ -350,8 +407,27 @@ class XanoRepository:
                 payload=payload,
             )
         except ApiError as error:
+            if (
+                method.upper() == "POST"
+                and path.lstrip("/") == "auth/login"
+                and error.status_code is not None
+            ):
+                response_json = _redact_auth_diagnostic(error.response_json)
+                response_body = json.dumps(response_json, ensure_ascii=False)
+                print(
+                    "Xano login failure: "
+                    f"POST {error.request_url or path} returned HTTP "
+                    f"{error.status_code}; response JSON: "
+                    f"{response_body}"
+                )
+                error_message = (
+                    f"Falha no login: HTTP {error.status_code}. "
+                    f"Resposta JSON do Xano: {response_body}"
+                )
+            else:
+                error_message = str(error)
             raise MockFailure(
-                str(error),
+                error_message,
                 code=error.code,
                 status_code=error.status_code,
             ) from error
@@ -620,23 +696,46 @@ class XanoRepository:
         barber_id: str,
         *,
         date: str | None = None,
+        status: str | None = None,
     ) -> list[BarberAppointmentRecord]:
         del barber_id
+        params = {
+            key: value
+            for key, value in {"date": date, "status": status}.items()
+            if value
+        }
         records = _items(
             await self._request(
                 "GET",
                 "barber/appointments",
-                params={"date": date} if date else None,
+                params=params,
             ),
             context="agenda do barbeiro",
         )
-        return [barber_appointment_view(_appointment(record)) for record in records]
+        inferred_status = _normalized_appointment_status(status) if status else None
+        if inferred_status is not None:
+            records = [
+                {
+                    **record,
+                    "status": record.get("status") or inferred_status,
+                }
+                for record in records
+            ]
+        return [
+            barber_appointment_view(
+                _appointment(
+                    record,
+                    warn_on_missing_status=bool(status) or "status" in record,
+                )
+            )
+            for record in records
+        ]
 
     async def admin_appointments(
         self,
         *,
         barber_id: str = "",
-        status: str = "",
+        status: str | None = None,
         date: str = "",
         from_date: str = "",
         to_date: str = "",
@@ -658,7 +757,22 @@ class XanoRepository:
             await self._request("GET", "admin/appointments", params=params),
             context="agenda administrativa",
         )
-        return [_appointment(record) for record in records]
+        inferred_status = _normalized_appointment_status(status) if status else None
+        if inferred_status is not None:
+            records = [
+                {
+                    **record,
+                    "status": record.get("status") or inferred_status,
+                }
+                for record in records
+            ]
+        return [
+            _appointment(
+                record,
+                warn_on_missing_status=bool(status) or "status" in record,
+            )
+            for record in records
+        ]
 
     async def appointment(self, appointment_id: str) -> AppointmentRecord:
         return _appointment(
