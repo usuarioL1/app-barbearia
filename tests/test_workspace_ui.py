@@ -4,6 +4,7 @@ from unittest.mock import patch
 import reflex as rx
 
 from app_barbearia.app_barbearia import app
+from app_barbearia.auth_pages import signup_page
 from app_barbearia.customer_portal import (
     _appointment_item,
     _service_image_name,
@@ -82,6 +83,13 @@ class UnpublishedEndpointMessageTests(unittest.TestCase):
 
         self.assertIn("Atendimentos Conclu\\u00eddos no M\\u00eas", page)
         self.assertIn("admin_completed_count", page)
+
+    def test_signup_layout_keeps_form_in_the_visible_responsive_row(self) -> None:
+        page = str(signup_page())
+
+        self.assertIn('["flexWrap"] : "nowrap"', page)
+        self.assertIn('["flex"] : "1 1 0%"', page)
+        self.assertIn('["width"] : "34%"', page)
 
 
 class ServiceImageMappingTests(unittest.TestCase):
