@@ -1423,6 +1423,7 @@ def appointments_page() -> rx.Component:
                             rx.vstack(
                                 rx.el.input(
                                     type="date",
+                                    lang="pt-BR",
                                     value=AppState.reschedule_date,
                                     on_change=AppState.set_reschedule_date,
                                     on_blur=AppState.load_reschedule_times,
@@ -1432,6 +1433,11 @@ def appointments_page() -> rx.Component:
                                     border=f"1px solid {SURFACE_BORDER}",
                                     border_radius="7px",
                                     padding="8px 10px",
+                                ),
+                                rx.text(
+                                    AppState.reschedule_date_display,
+                                    color=MUTED,
+                                    font_size="0.75rem",
                                 ),
                                 rx.select(
                                     AppState.reschedule_available_times,

@@ -102,8 +102,20 @@ def _object(value: Any, *, context: str) -> dict[str, Any]:
 
 
 def _items(value: Any, *, context: str) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        if any(not isinstance(item, dict) for item in value):
+            raise MockFailure(
+                f"O sistema retornou uma lista inválida para {context}.",
+                code="invalid_response",
+            )
+        return value
     if isinstance(value, dict):
-        value = value.get("items")
+        for key in ("items", "data", "results"):
+            if key in value:
+                value = value[key]
+                break
+        else:
+            value = None
     if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
         raise MockFailure(
             f"O sistema retornou uma lista inválida para {context}.",
@@ -192,8 +204,14 @@ def _user(record: Mapping[str, Any]) -> UserRecord:
 
 def _service(record: Mapping[str, Any]) -> ServiceRecord:
     cents = _price_cents(record)
-    duration = _integer(record, "duration_minutes")
-    title = _text(record, "title", context="serviço")
+    duration = _integer(record, "duration_minutes" if "duration_minutes" in record else "duration")
+    title_value = record.get("title", record.get("name"))
+    if not isinstance(title_value, (str, int)) or isinstance(title_value, bool):
+        raise MockFailure(
+            "O sistema retornou um título de serviço inválido.",
+            code="invalid_response",
+        )
+    title = str(title_value)
     return {
         "id": _text(record, "id", context="serviço"),
         "title": title,
@@ -209,7 +227,17 @@ def _service(record: Mapping[str, Any]) -> ServiceRecord:
 
 
 def _barber(record: Mapping[str, Any]) -> BarberRecord:
-    name = _text(record, "name", context="barbeiro")
+    name_value = record.get("name")
+    if not isinstance(name_value, (str, int)) or isinstance(name_value, bool):
+        user = record.get("user")
+        if isinstance(user, dict):
+            name_value = user.get("name")
+    if not isinstance(name_value, (str, int)) or isinstance(name_value, bool):
+        raise MockFailure(
+            "O sistema retornou um nome de barbeiro inválido.",
+            code="invalid_response",
+        )
+    name = str(name_value)
     specialty = _optional_text(record, "specialty")
     initials = "".join(part[0] for part in name.split()[:2]).upper()
     return {
@@ -546,18 +574,34 @@ class XanoRepository:
 
     async def services(self, *, active_only: bool = True) -> list[ServiceRecord]:
         path = "services" if active_only else "admin/services"
-        records = _items(
-            await self._request("GET", path),
-            context="serviços",
-        )
+        try:
+            records = _items(
+                await self._request("GET", path),
+                context="serviços",
+            )
+        except MockFailure as error:
+            if active_only or error.status_code != 404:
+                raise
+            records = _items(
+                await self._request("GET", "services"),
+                context="serviços",
+            )
         return [_service(record) for record in records]
 
     async def barbers(self, *, active_only: bool = True) -> list[BarberRecord]:
         path = "barbers" if active_only else "admin/barbers"
-        records = _items(
-            await self._request("GET", path),
-            context="barbeiros",
-        )
+        try:
+            records = _items(
+                await self._request("GET", path),
+                context="barbeiros",
+            )
+        except MockFailure as error:
+            if active_only or error.status_code != 404:
+                raise
+            records = _items(
+                await self._request("GET", "barbers"),
+                context="barbeiros",
+            )
         return [_barber(record) for record in records]
 
     async def customer_appointments(
@@ -629,24 +673,55 @@ class XanoRepository:
             await self._request("GET", "admin/clients"),
             context="clientes",
         )
-        return [
-            {
-                "id": _text(record, "id", context="cliente"),
-                "name": _text(record, "name", context="cliente"),
-                "email": _text(record, "email", context="cliente"),
-                "phone": _optional_text(record, "phone"),
-                "appointments": _optional_text(record, "appointments"),
-                "last_appointment": _optional_text(record, "last_appointment"),
-            }
-            for record in records
-        ]
+        clients = []
+        for record in records:
+            user = record.get("user")
+            source = user if isinstance(user, dict) else record
+            name = source.get("name", record.get("name"))
+            email = source.get("email", record.get("email"))
+            phone = source.get("phone", record.get("phone"))
+            if not isinstance(name, (str, int)) or isinstance(name, bool):
+                raise MockFailure(
+                    "O sistema retornou um nome de cliente inválido.",
+                    code="invalid_response",
+                )
+            if not isinstance(email, (str, int)) or isinstance(email, bool):
+                raise MockFailure(
+                    "O sistema retornou um e-mail de cliente inválido.",
+                    code="invalid_response",
+                )
+            role = _text(record, "role", context="cliente")
+            if role != "client":
+                continue
+            clients.append(
+                {
+                    "id": _text(
+                        {**source, "id": record.get("id", source.get("id"))},
+                        "id",
+                        context="cliente",
+                    ),
+                    "name": str(name),
+                    "email": str(email),
+                    "role": role,
+                    "phone": _optional_text(
+                        {**record, "phone": phone},
+                        "phone",
+                    ),
+                    "appointments": _optional_text(record, "appointments"),
+                    "last_appointment": _optional_text(record, "last_appointment"),
+                }
+            )
+        return clients
 
     async def users(self) -> list[UserRecord]:
         records = _items(
             await self._request("GET", "admin/users"),
             context="usuários",
         )
-        return [_user(record) for record in records]
+        return [
+            _user(record.get("user") if isinstance(record.get("user"), dict) else record)
+            for record in records
+        ]
 
     async def availability(
         self,

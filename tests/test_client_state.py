@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from unittest.mock import AsyncMock, patch
 
 from app_barbearia.mock_repository import MockFailure, MockRepository
@@ -70,6 +71,15 @@ class ClientStateHarness:
         self.admin_report_revenue_series = []
         self.admin_report_service_gradient = "conic-gradient(#292929 0% 100%)"
 
+    def _calendar_for_month(self, month: str) -> list[str]:
+        return AppState._calendar_for_month(self, month)
+
+    def _month_label(self, month: str) -> str:
+        return AppState._month_label(self, month)
+
+    def _update_selected_service_summary(self) -> None:
+        AppState._update_selected_service_summary(self)
+
     def _begin_request(self) -> None:
         self.is_loading = True
         self.error_message = ""
@@ -110,6 +120,62 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         )
         environment.start()
         self.addCleanup(environment.stop)
+
+    async def test_barber_workspace_loads_machine_today(self) -> None:
+        class MachineDate(date):
+            @classmethod
+            def today(cls) -> date:
+                return cls(2026, 11, 22)
+
+        state = ClientStateHarness()
+        state._load_barber_appointments = AsyncMock()
+        with (
+            patch("app_barbearia.state.date", MachineDate),
+        ):
+            await AppState.load_barber_workspace.fn(state)
+
+        state._load_barber_appointments.assert_awaited_once_with("2026-11-22")
+
+    async def test_admin_agenda_loads_machine_today(self) -> None:
+        class MachineDate(date):
+            @classmethod
+            def today(cls) -> date:
+                return cls(2026, 11, 22)
+
+        state = ClientStateHarness()
+        state._load_admin_agenda = AsyncMock()
+        with (
+            patch("app_barbearia.state.date", MachineDate),
+        ):
+            await AppState.load_admin_agenda.fn(state)
+
+        state._load_admin_agenda.assert_awaited_once_with(
+            selected_date="2026-11-22",
+            barber_id="",
+            status="",
+        )
+
+    async def test_booking_load_selects_machine_today(self) -> None:
+        class MachineDate(date):
+            @classmethod
+            def today(cls) -> date:
+                return cls(2026, 11, 22)
+
+        state = ClientStateHarness()
+        with (
+            patch("app_barbearia.state.date", MachineDate),
+            patch.object(
+                MockRepository,
+                "availability",
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            await AppState.load_booking.fn(state)
+
+        self.assertEqual(state.selected_date, "2026-11-22")
+        self.assertEqual(state.selected_day, "22")
+        self.assertEqual(state.booking_month, "2026-11")
+        self.assertEqual(state.selected_date_display, "22/11/2026")
 
     async def test_customer_appointments_are_sorted_and_split_by_active_status(self) -> None:
         state = ClientStateHarness()
@@ -465,6 +531,14 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertFalse(state.is_loading)
 
+    async def test_barber_set_date_loads_selected_date(self) -> None:
+        state = ClientStateHarness()
+        state._load_barber_appointments = AsyncMock()
+
+        await AppState.set_barber_date.fn(state, "2026-08-28")
+
+        state._load_barber_appointments.assert_awaited_once_with("2026-08-28")
+
     async def test_admin_filter_success_updates_period_filter_and_results_together(self) -> None:
         state = ClientStateHarness()
         appointment = {
@@ -561,6 +635,24 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         ]
 
         self.assertEqual(_appointments_for_date(appointments, "2026-08-24"), [])
+
+    async def test_admin_dashboard_passes_repository_to_monthly_series(self) -> None:
+        state = ClientStateHarness()
+        series = AsyncMock(return_value=[])
+
+        with (
+            patch.object(
+                MockRepository,
+                "admin_appointments",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(MockRepository, "clients", new=AsyncMock(return_value=[])),
+            patch.object(MockRepository, "revenue", new=AsyncMock(return_value=0)),
+            patch("app_barbearia.state._monthly_revenue_series", new=series),
+        ):
+            await AppState.load_admin_dashboard.fn(state)
+
+        series.assert_awaited_once_with(date.fromisoformat(state.admin_date).replace(day=1), MockRepository)
 
     async def test_admin_day_navigation_moves_one_day_and_keeps_filters(self) -> None:
         state = ClientStateHarness()
@@ -667,6 +759,46 @@ class ClientStateTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([client["id"] for client in by_phone], ["client-pedro"])
         self.assertEqual(no_matches, [])
         self.assertEqual(state.clients, original_clients)
+
+    async def test_admin_client_filter_excludes_other_user_roles(self) -> None:
+        clients = await MockRepository.clients()
+        clients.extend(
+            [
+                {**clients[0], "id": "admin-1", "role": "admin"},
+                {**clients[1], "id": "barber-1", "role": "barber"},
+            ]
+        )
+
+        filtered = _filter_admin_clients(clients, "")
+
+        self.assertEqual(
+            [client["id"] for client in filtered],
+            [client["id"] for client in await MockRepository.clients()],
+        )
+
+    async def test_admin_week_agenda_labels_use_brazilian_full_date(self) -> None:
+        state = ClientStateHarness()
+
+        with (
+            patch.object(
+                MockRepository,
+                "admin_appointments",
+                new=AsyncMock(return_value=[]),
+            ),
+            patch.object(
+                MockRepository,
+                "barbers",
+                new=AsyncMock(return_value=[]),
+            ),
+        ):
+            await AppState._load_admin_agenda(
+                state,
+                selected_date="2026-08-24",
+                barber_id="",
+                status="",
+            )
+
+        self.assertEqual(state.admin_week_days[0]["label"], "Seg 24/08/2026")
 
     async def test_admin_client_form_prefills_edit_and_sends_nonpersistent_payload(
         self,

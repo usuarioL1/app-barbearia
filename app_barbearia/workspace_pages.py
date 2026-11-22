@@ -708,6 +708,18 @@ def barber_workspace() -> rx.Component:
                         color=FOREGROUND,
                         font_size="0.7rem",
                     ),
+                    rx.el.input(
+                        type="date",
+                        lang="pt-BR",
+                        value=AppState.barber_date,
+                        on_change=AppState.set_barber_date,
+                        aria_label="Selecionar data da agenda",
+                        background_color=SURFACE,
+                        color=FOREGROUND,
+                        border=f"1px solid {SURFACE_BORDER}",
+                        border_radius="7px",
+                        padding="6px 8px",
+                    ),
                     _action(
                         "‹",
                         aria_label="Dia anterior",
@@ -1210,6 +1222,7 @@ def admin_agenda_page() -> rx.Component:
                     ),
                     rx.el.input(
                         type="date",
+                        lang="pt-BR",
                         value=AppState.admin_date,
                         on_change=AppState.set_admin_date,
                         aria_label="Data da agenda administrativa",
@@ -1697,6 +1710,7 @@ def admin_reports_page() -> rx.Component:
                 ),
                 rx.el.input(
                     type="date",
+                    lang="pt-BR",
                     value=AppState.admin_report_date,
                     on_change=AppState.set_admin_report_date,
                     aria_label="Data do relatório",
@@ -1705,6 +1719,11 @@ def admin_reports_page() -> rx.Component:
                     border=f"1px solid {SURFACE_BORDER}",
                     border_radius="7px",
                     padding="6px 8px",
+                ),
+                rx.text(
+                    AppState.admin_report_date_display,
+                    color=MUTED,
+                    font_size="0.7rem",
                 ),
                 align="center",
                 flex_wrap="wrap",
@@ -1737,7 +1756,7 @@ def admin_reports_page() -> rx.Component:
                         "Faturamento do Período",
                         rx.vstack(
                             rx.text(
-                                AppState.admin_report_date,
+                                AppState.admin_report_date_display,
                                 color=MUTED,
                                 font_size="0.7rem",
                             ),

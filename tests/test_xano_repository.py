@@ -219,6 +219,58 @@ class XanoRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.await_args_list[0].args[:2], ("GET", "services"))
         self.assertEqual(request.await_args_list[1].args[:2], ("GET", "barbers"))
 
+    async def test_admin_clients_and_users_use_admin_collections(self) -> None:
+        request = AsyncMock(
+            side_effect=[
+                {
+                    "items": [
+                        {
+                            "id": 14,
+                            "name": "Cliente",
+                            "email": "cliente@example.test",
+                            "phone": "11999999999",
+                            "role": "client",
+                        },
+                        {
+                            "id": 16,
+                            "name": "Administrador",
+                            "email": "admin@example.test",
+                            "phone": "",
+                            "role": "admin",
+                        }
+                    ]
+                },
+                {
+                    "items": [
+                        {
+                            "id": 15,
+                            "name": "Administrador",
+                            "email": "admin@example.test",
+                            "phone": "",
+                            "role": "admin",
+                        }
+                    ]
+                },
+            ]
+        )
+        repository = XanoRepository("admin-session")
+        with patch("app_barbearia.xano_repository.request_json", new=request):
+            clients = await repository.clients()
+            users = await repository.users()
+
+        self.assertEqual(clients[0]["id"], "14")
+        self.assertEqual(clients[0]["name"], "Cliente")
+        self.assertEqual([client["role"] for client in clients], ["client"])
+        self.assertEqual(users[0]["id"], "15")
+        self.assertEqual(users[0]["role"], "admin")
+        self.assertEqual(
+            [call.args[1] for call in request.await_args_list],
+            ["admin/clients", "admin/users"],
+        )
+        self.assertTrue(
+            all(call.kwargs["token"] == "admin-session" for call in request.await_args_list)
+        )
+
     def test_appointment_timestamps_are_presented_in_sao_paulo_time(self) -> None:
         appointment = _appointment(
             {

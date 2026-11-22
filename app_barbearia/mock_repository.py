@@ -50,6 +50,7 @@ class ClientRecord(TypedDict):
     name: str
     email: str
     phone: str
+    role: str
     appointments: str
     last_appointment: str
 
@@ -402,6 +403,7 @@ _CLIENTS: tuple[ClientRecord, ...] = (
         "name": "João Silva",
         "email": "joao@email.com",
         "phone": "(11) 98765-4321",
+        "role": "client",
         "appointments": "12",
         "last_appointment": "10/08/2026",
     },
@@ -410,6 +412,7 @@ _CLIENTS: tuple[ClientRecord, ...] = (
         "name": "Maria Oliveira",
         "email": "maria@email.com",
         "phone": "(11) 97654-3210",
+        "role": "client",
         "appointments": "8",
         "last_appointment": "05/08/2026",
     },
@@ -418,6 +421,7 @@ _CLIENTS: tuple[ClientRecord, ...] = (
         "name": "Pedro Santos",
         "email": "pedro@email.com",
         "phone": "(11) 96543-2109",
+        "role": "client",
         "appointments": "15",
         "last_appointment": "12/08/2026",
     },
@@ -426,6 +430,7 @@ _CLIENTS: tuple[ClientRecord, ...] = (
         "name": "Lucas Souza",
         "email": "lucas.souza@email.com",
         "phone": "(11) 95432-1098",
+        "role": "client",
         "appointments": "6",
         "last_appointment": "01/08/2026",
     },
@@ -434,6 +439,7 @@ _CLIENTS: tuple[ClientRecord, ...] = (
         "name": "Rafael Costa",
         "email": "rafael.costa@email.com",
         "phone": "(11) 94321-0987",
+        "role": "client",
         "appointments": "9",
         "last_appointment": "08/08/2026",
     },

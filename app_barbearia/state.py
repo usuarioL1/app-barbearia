@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Literal
 from urllib.parse import urlparse
 
@@ -35,21 +35,31 @@ _MONTH_LABELS = (
     "Nov",
     "Dez",
 )
+_MONTH_NAMES = (
+    "Janeiro",
+    "Fevereiro",
+    "Março",
+    "Abril",
+    "Maio",
+    "Junho",
+    "Julho",
+    "Agosto",
+    "Setembro",
+    "Outubro",
+    "Novembro",
+    "Dezembro",
+)
+_INITIAL_TODAY = date.today()
 
 
-def _default_booking_date(duration_minutes: int) -> date:
-    now = datetime.now(LOCAL_TIMEZONE)
-    opening = datetime.combine(now.date(), time(9), tzinfo=LOCAL_TIMEZONE)
-    closing = datetime.combine(now.date(), time(18), tzinfo=LOCAL_TIMEZONE)
-    earliest_start = max(opening, now + timedelta(hours=2))
-    if now.weekday() == 6 or earliest_start + timedelta(
-        minutes=duration_minutes + 15
-    ) > closing:
-        next_day = now.date() + timedelta(days=1)
-        while next_day.weekday() == 6:
-            next_day += timedelta(days=1)
-        return next_day
-    return now.date()
+def _format_brazilian_date(value: str) -> str:
+    """Converte uma data ISO somente para apresentação em português brasileiro."""
+    if not value:
+        return ""
+    try:
+        return date.fromisoformat(value).strftime("%d/%m/%Y")
+    except ValueError:
+        return value
 
 
 async def _monthly_revenue_series(
@@ -113,6 +123,7 @@ def _filter_admin_clients(
     clients: list[ClientRecord],
     search: str,
 ) -> list[ClientRecord]:
+    clients = [client for client in clients if client["role"] == "client"]
     query = search.strip().casefold()
     if not query:
         return clients
@@ -277,12 +288,14 @@ class AppState(rx.State):
     selected_service_duration: str = "30 min"
     selected_barber_id: str = "rafael"
     selected_barber_name: str = "Rafael Silva"
-    selected_date: str = "2026-08-25"
-    selected_day: str = "25"
-    selected_date_display: str = "25/08/2026"
+    selected_date: str = _INITIAL_TODAY.isoformat()
+    selected_day: str = _INITIAL_TODAY.strftime("%d")
+    selected_date_display: str = _INITIAL_TODAY.strftime("%d/%m/%Y")
     selected_time: str = ""
-    booking_month: str = "2026-08"
-    booking_month_display: str = "Agosto 2026"
+    booking_month: str = _INITIAL_TODAY.strftime("%Y-%m")
+    booking_month_display: str = (
+        f"{_MONTH_NAMES[_INITIAL_TODAY.month - 1]} {_INITIAL_TODAY.year}"
+    )
     calendar_days: list[str] = []
     available_times: list[str] = []
     booking_confirmed: bool = False
@@ -291,10 +304,10 @@ class AppState(rx.State):
     booking_confirmation_time: str = ""
 
     barber_id: str = "rafael"
-    barber_date: str = MOCK_NOW.date().isoformat()
+    barber_date: str = _INITIAL_TODAY.isoformat()
     barber_appointments: list[BarberAppointmentRecord] = []
 
-    admin_date: str = MOCK_NOW.date().isoformat()
+    admin_date: str = _INITIAL_TODAY.isoformat()
     admin_view_mode: Literal["day", "week"] = "week"
     admin_filter_barber: str = ""
     admin_filter_status: str = ""
@@ -304,7 +317,7 @@ class AppState(rx.State):
     admin_revenue_cents: int = 0
     admin_revenue_series: list[dict[str, str]] = []
     admin_report_period: Literal["day", "month"] = "month"
-    admin_report_date: str = MOCK_NOW.date().replace(day=1).isoformat()
+    admin_report_date: str = _INITIAL_TODAY.replace(day=1).isoformat()
     admin_report_revenue_cents: int = 0
     admin_report_completed_count: int = 0
     admin_report_service_summary: list[dict[str, str]] = []
@@ -370,6 +383,14 @@ class AppState(rx.State):
         return date.fromisoformat(self.admin_date).strftime("%d/%m/%Y")
 
     @rx.var
+    def admin_report_date_display(self) -> str:
+        return _format_brazilian_date(self.admin_report_date)
+
+    @rx.var
+    def reschedule_date_display(self) -> str:
+        return _format_brazilian_date(self.reschedule_date)
+
+    @rx.var
     def admin_day_appointments(self) -> list[AppointmentRecord]:
         return _appointments_for_date(self.admin_appointments, self.admin_date)
 
@@ -379,7 +400,7 @@ class AppState(rx.State):
 
     @rx.var
     def admin_client_count(self) -> str:
-        return str(len(self.clients))
+        return str(len(self.filtered_admin_clients))
 
     @rx.var
     def filtered_admin_clients(self) -> list[ClientRecord]:
@@ -986,12 +1007,16 @@ class AppState(rx.State):
 
     @rx.event
     async def load_barber_workspace(self) -> None:
-        await self._load_barber_appointments(self.barber_date)
+        await self._load_barber_appointments(date.today().isoformat())
 
     @rx.event
     async def change_barber_date(self, day_delta: int) -> None:
         next_date = date.fromisoformat(self.barber_date) + timedelta(days=day_delta)
         await self._load_barber_appointments(next_date.isoformat())
+
+    @rx.event
+    async def set_barber_date(self, selected_date: str) -> None:
+        await self._load_barber_appointments(selected_date)
 
     @rx.event
     async def update_barber_appointment_status(
@@ -1082,7 +1107,10 @@ class AppState(rx.State):
             self.admin_week_days = [
                 {
                     "date": day.isoformat(),
-                    "label": f"{day_names[day.weekday()]} {day.strftime('%d/%m')}",
+                    "label": (
+                        f"{day_names[day.weekday()]} "
+                        f"{day.strftime('%d/%m/%Y')}"
+                    ),
                     "count": str(
                         sum(item["date"] == day.isoformat() for item in self.admin_appointments)
                     ),
@@ -1096,7 +1124,7 @@ class AppState(rx.State):
     @rx.event
     async def load_admin_agenda(self) -> None:
         await self._load_admin_agenda(
-            selected_date=self.admin_date,
+            selected_date=date.today().isoformat(),
             barber_id=self.admin_filter_barber,
             status=self.admin_filter_status,
         )
@@ -1206,25 +1234,42 @@ class AppState(rx.State):
         allowed, _ = await _ensure_authenticated(self, {"admin"})
         if not allowed:
             return
+        self.admin_date = date.today().isoformat()
         self._begin_request()
         try:
             appointments = await _repository_for(self).admin_appointments(
                 date=self.admin_date
             )
-            clients = await _repository_for(self).clients()
-            revenue = await _repository_for(self).revenue(
-                "month",
-                f"{self.admin_date[:7]}-01",
-            )
-            revenue_series = await _monthly_revenue_series(
-                date.fromisoformat(self.admin_date).replace(day=1)
-            )
         except MockFailure as error:
             self._set_failure(error)
         else:
             self.admin_dashboard_appointments = appointments
+
+        try:
+            clients = await _repository_for(self).clients()
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
             self.clients = clients
+
+        try:
+            revenue = await _repository_for(self).revenue(
+                "month",
+                f"{self.admin_date[:7]}-01",
+            )
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
             self.admin_revenue_cents = revenue
+
+        try:
+            revenue_series = await _monthly_revenue_series(
+                date.fromisoformat(self.admin_date).replace(day=1),
+                _repository_for(self),
+            )
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
             self.admin_revenue_series = revenue_series
         finally:
             self._end_request()
@@ -1237,15 +1282,57 @@ class AppState(rx.State):
         self._begin_request()
         try:
             clients = await _repository_for(self).clients()
-            services = await _repository_for(self).services(active_only=False)
-            barbers = await _repository_for(self).barbers(active_only=False)
-            users = await _repository_for(self).users()
         except MockFailure as error:
             self._set_failure(error)
         else:
             self.clients = clients
+
+        try:
+            appointments = await _repository_for(self).admin_appointments()
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
+            client_appointments: dict[str, list[str]] = {}
+            for appointment in appointments:
+                client_appointments.setdefault(appointment["client_id"], []).append(
+                    appointment["date"]
+                )
+            self.clients = [
+                {
+                    **client,
+                    "appointments": str(
+                        len(client_appointments.get(client["id"], []))
+                    ),
+                    "last_appointment": (
+                        date.fromisoformat(
+                            max(client_appointments[client["id"]])
+                        ).strftime("%d/%m/%Y")
+                        if client_appointments.get(client["id"])
+                        else ""
+                    ),
+                }
+                for client in self.clients
+            ]
+
+        try:
+            services = await _repository_for(self).services(active_only=False)
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
             self.services = services
+
+        try:
+            barbers = await _repository_for(self).barbers(active_only=False)
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
             self.barbers = barbers
+
+        try:
+            users = await _repository_for(self).users()
+        except MockFailure as error:
+            self._set_failure(error)
+        else:
             self.users = users
         finally:
             self._end_request()
@@ -1389,6 +1476,7 @@ class AppState(rx.State):
         self.barbers = []
         self.available_times = []
         self.selected_time = ""
+        self.selected_date = date.today().isoformat()
         try:
             repository = _repository_for(self)
             services = await repository.services()
@@ -1430,20 +1518,6 @@ class AppState(rx.State):
             else:
                 self.selected_barber_id = ""
                 self.selected_barber_name = ""
-
-            if isinstance(repository, XanoRepository):
-                today = datetime.now(LOCAL_TIMEZONE).date()
-                try:
-                    selected_date = date.fromisoformat(self.selected_date)
-                except ValueError:
-                    selected_date = today - timedelta(days=1)
-                if not today <= selected_date <= today + timedelta(days=30):
-                    selected_date = _default_booking_date(
-                        selected_service["duration_minutes"]
-                        if selected_service is not None
-                        else 30
-                    )
-                self.selected_date = selected_date.isoformat()
 
             self.booking_month = self.selected_date[:7]
             self.booking_month_display = self._month_label(self.booking_month)
